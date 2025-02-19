@@ -1,0 +1,37 @@
+.delivery-block {
+    border: 1px solid #ccc;
+    padding: 20px;
+    border-radius: 10px;
+  }
+  
+  .delivery-header {
+    margin-bottom: 20px;
+  }
+  
+  .delivery-type, .dropoff-instructions, .tip-section {
+    margin-bottom: 20px;
+  }
+  
+  .delivery-options {
+    display: flex;
+    justify-content: space-between;
+  }
+  
+  .delivery-option {
+    padding: 10px 20px;
+    border: 1px solid #ccc;
+    cursor: pointer;
+    background-color: #f9f9f9;
+  }
+  
+  .tip-options {
+    display: flex;
+    justify-content: space-around;
+  }
+  
+  .custom-tip-input {
+    margin-left: 10px;
+    padding: 5px;
+    width: 100px;
+  }
+  

@@ -1,0 +1,94 @@
+{% schema %}
+{
+  "name": "Entrada de texto",
+  "target": "section",
+  "stylesheet": "custom.css",
+  "settings": [
+    {
+      "type": "text",
+      "id": "label",
+      "label": "Etiqueta para el input",
+      "default": "Ingresa tu código postal"
+    },
+    {
+      "type": "text",
+      "id": "placeholder",
+      "label": "Texto del marcador de posición",
+      "default": "Ejemplo: 12345"
+    }
+  ]
+}
+{% endschema %}
+
+<div class="custom-block">
+  <span class="prueba">hola mundo</span>
+  <form id="courierForm">
+    <label for="courierInput">{{ settings.label }}</label>
+    <input type="text" id="courierInput" name="courierInput" placeholder="{{ settings.placeholder }}" required>
+    <button type="submit">ok</button>
+  </form>
+</div>
+
+<script>
+
+  document.getElementById('courierForm').addEventListener('submit', function(event) {
+
+    event.preventDefault();
+
+    function updateCartWithFee(feeAmount) {
+    fetch('/cart.js')
+        .then(response => response.json())
+        .then(cart => {
+            // Obtener el precio original
+            let originalPrice = cart.total_price;
+            
+            // Convertir el precio a formato decimal (Shopify almacena precios en centavos)
+            let priceInDollars = originalPrice / 100;
+            
+            // Añadir el fee
+            let newPrice = priceInDollars + feeAmount;
+            
+            // Convertir de nuevo a centavos para Shopify
+            let newPriceInCents = newPrice * 100;
+            
+            // Actualizar el carrito usando la API de Shopify
+            fetch('/cart/update.js', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    total_price: 1111111
+                })
+            })
+            .then(response => response.json())
+            .then(updatedCart => {
+                console.log('Carrito actualizado:', updatedCart);
+                
+                // Actualizar el precio en la interfaz
+                updatePriceDisplay(newPrice);
+            })
+            .catch(error => {
+                console.error('Error al actualizar el carrito:', error);
+            });
+        })
+        .catch(error => {
+            console.error('Error al obtener el carrito:', error);
+        });
+}
+
+// Función para actualizar el precio en la interfaz
+function updatePriceDisplay(newPrice) {
+    // Seleccionar el elemento que muestra el precio total
+    const priceElement = document.querySelector('.cart-total-price');
+    if (priceElement) {
+        // Formatear el precio con dos decimales
+        priceElement.textContent = `$${newPrice.toFixed(2)}`;
+    }
+}
+
+// Ejemplo de uso:
+updateCartWithFee(5.99); // Añadir un fee de $5.99
+
+  });
+</script>

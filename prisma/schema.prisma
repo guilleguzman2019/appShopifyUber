@@ -1,0 +1,149 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Note that some adapters may set a maximum length for the String type by default, please ensure your strings are long
+// enough when changing adapters.
+// See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
+datasource db {
+  provider = "sqlite"
+  url      = "file:dev.sqlite"
+}
+
+model Session {
+  id            String    @id
+  shop          String
+  state         String
+  isOnline      Boolean   @default(false)
+  scope         String?
+  expires       DateTime?
+  accessToken   String
+  userId        BigInt?
+  firstName     String?
+  lastName      String?
+  email         String?
+  accountOwner  Boolean   @default(false)
+  locale        String?
+  collaborator  Boolean?  @default(false)
+  emailVerified Boolean?  @default(false)
+}
+
+model Tienda {
+  id        Int        @id @default(autoincrement())
+  nombre    String     @unique
+  ajustes   Ajustes?
+  ajustesEmail    AjustesEmail?
+  sucursales Sucursal[] 
+  productos Producto[]
+  horarios  String?
+  sucursalPrincipalId String? // Nueva referencia a la sucursal principal
+  propina   Propina?
+  ajustesPickupDrop     AjustesPickupDrop?
+  ajustesProductos      AjustesProducto?
+}
+
+model AjustesEmail {
+  id        Int      @id @default(autoincrement())
+  tienda    Tienda   @relation(fields: [tiendaId], references: [id])
+  tiendaId  Int      @unique // Este campo lo genera Prisma automáticamente para la relación
+  user      String
+  pass      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Ajustes {
+  id        Int      @id @default(autoincrement())
+  tienda    Tienda   @relation(fields: [tiendaId], references: [id])
+  tiendaId  Int      @unique // Este campo lo genera Prisma automáticamente para la relación
+  apiKey    String
+  secretKey String
+  modo      String   @default("Testing")
+  titulo    String   @default("Uber Delivery")
+  idioma    String   @default("es")
+  montoMin  Int   @default(0)
+  habilitado    Boolean   @default(true)
+  customer  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Producto {
+  id               String   @id @default(uuid())
+  title            String
+  image            String?  // URL de la imagen del producto (opcional)
+  preparationTime  Int
+  length           Float
+  height           Float
+  depth            Float
+  tiendaId         Int?     // ID de la tienda a la que pertenece el producto (opcional)
+  tienda           Tienda?  @relation(fields: [tiendaId], references: [id])
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Sucursal {
+  id               String   @id @default(uuid())
+  direccion        String
+  latitud          Float
+  longitud         Float
+  ciudad           String
+  estado           String
+  codigoPostal     String
+  pais             String
+  telefono         String
+  email            String
+  tiendaId         Int
+  tienda           Tienda   @relation(fields: [tiendaId], references: [id])
+  esPrincipal      Boolean  @default(false) // Nuevo campo para identificar sucursal principal
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Propina {
+  id          Int      @id @default(autoincrement())
+  tipo        String   // Tipo de propina: "free", "calculated", "fixed", "percentage", etc.
+  valor       Float?   // Valor asociado (fijo, porcentaje, o monto mínimo)
+  habilitada  Boolean  // Si la propina está habilitada
+  tiendaId    Int      @unique // Relación uno a uno con la tienda
+  tienda      Tienda   @relation(fields: [tiendaId], references: [id])
+}
+
+model AjustesPickupDrop {
+  id                     Int       @id @default(autoincrement())
+  tiendaId    Int      @unique // Relación uno a uno con la tienda
+  tienda      Tienda   @relation(fields: [tiendaId], references: [id])
+
+  firmaPickup            Boolean   @default(false)
+  nombreFirmaPickup      Boolean   @default(false)
+  relacionFirmaPickup    Boolean   @default(false)
+  fotoPickup             Boolean   @default(false)
+
+  firmaDrop              Boolean   @default(false)
+  nombreFirmaDrop        Boolean   @default(false)
+  relacionFirmaDrop      Boolean   @default(false)
+  fotoDrop               Boolean   @default(false)
+  edadMinimaDrop         Int?      // Edad mínima para Drop
+  pincodeDrop            Boolean   @default(false)
+
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+}
+
+model AjustesProducto {
+  id                    Int     @id @default(autoincrement())
+  tiendaId              Int      @unique // Relación uno a uno con la tienda
+  tienda                Tienda   @relation(fields: [tiendaId], references: [id])
+  peso                  Float
+  largo                 Float
+  alto                  Float
+  ancho                 Float
+  tiempoPreparacion     Int
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+

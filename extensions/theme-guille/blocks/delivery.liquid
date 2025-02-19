@@ -1,0 +1,392 @@
+{% schema %}
+{
+  "name": "Delivery and Tip Options",
+  "target": "section",
+  "stylesheet": "custom.css",
+  "settings": []
+}
+{% endschema %}
+
+
+<div class="delivery-container">
+  <div class="delivery-header">
+    <h5 id="from"> </h5>
+    <div id="mapa" style="height: 130px; width: 100%;"></div>
+    <h5 id="openingHours"></h5>
+  </div>
+
+  <div class="delivery-type-container">
+    <button class="delivery-button" id="asapButton">ASAP</button>
+    <button class="delivery-button" id="scheduleButton">SCHEDULE</button>
+  </div>
+
+  <div class="schedule-details" id="scheduleDetails" style="display: none;">
+    <div class="schedule-label">Delivery time:</div>
+    <div class="date-time-inputs">
+      <input
+        type="datetime-local"
+        class="date-input"
+        id="dateInput"
+        name="meeting-time"
+        value="2018-06-12T19:30"
+        min="2023-06-07T00:00"
+        max="2026-06-14T00:00" />
+    </div>
+  </div>
+
+  <input type="text" class="dropoff-input" placeholder="Dropoff Instructions" id="dropoffInput">
+
+  <div class="tip-container">
+    <button class="tip-button" data-tip="15">15%</button>
+    <button class="tip-button" data-tip="20">20%</button>
+    <button class="tip-button" data-tip="25">25%</button>
+  </div>
+
+  <input type="number" class="custom-tip" id="custom-tip" placeholder="Custom Tip Amount %">
+  <h5 class="textoPropina m-0"></h5>
+</div>
+
+<script>
+
+const fetchSettings = async () => {
+
+  try {
+
+  const data = await getDataShop();  // Esperamos la respuesta de getDataShop
+
+  if (data.error) {
+
+    console.log('Hubo un error:', data.message);  // Maneja el error si lo hay
+    document.getElementById('from').innerText = 'Delivery from not found address shop';
+    throw new Error('Error al obtener la configuración');
+
+  } else {
+
+    console.log('Datos obtenidos:', data);  // Si la consulta fue exitosa, mostramos los datos
+  }
+
+    const montoMinimo = data.tienda.ajustes.montoMin;
+
+    console.log(montoMinimo);
+
+    /*
+
+    if(data.tienda.ajustes.habilitado){
+
+      enableCarrierService(true);
+    }
+    */
+
+    window.habilitadoUber = data.tienda.ajustes.habilitado;
+
+    window.montoMinimo = montoMinimo;
+
+    console.log(montoMinimo);
+    const total = await getCartTotal();
+
+    console.log(total);
+
+    const tiempo = await fetchTiempoPreparacion(data.tienda.productos);
+
+    actualizarPropina(data.tienda.propina);
+
+    const horarioHoy = horarioAtencion(data.tienda.horarios);
+    
+    const updatedProperties = {
+      diaHorariofinal: horarioHoy,
+      propina: getPropinaValue(data.tienda.propina),
+      tiempoPreparacion: tiempo,
+      idTienda: data.tienda.id,
+    };
+
+    UpdateProperties(updatedProperties);
+
+    if (horarioHoy) {
+      displayHorario(horarioHoy, data.sucursal[0]);
+    } else {
+      document.getElementById('openingHours').innerText = 'No opening hours for today';
+    }
+  } catch (error) {
+    console.error(error);
+    document.getElementById('from').innerText = 'Delivery from not found address shop';
+  }
+};
+
+const getDataShop = async () => {
+
+  try {
+
+    enableButtonCheckout(false);
+
+    const response = await fetch('https://brunette-rocks-yarn-kuwait.trycloudflare.com/api/dataShop', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ tienda: window.Shopify.shop }),
+    });
+
+    if (!response.ok) throw new Error('Error al obtener la configuración');
+
+    const data = await response.json();  // Si la respuesta es exitosa, obtenemos los datos
+    enableButtonCheckout(true);
+    return data;  // Devolvemos los datos
+
+  } catch (error) {
+    console.error('Error al obtener los datos:', error);
+    enableButtonCheckout(true);
+    return { error: true, message: error.message };  // Devolvemos un objeto de error
+  }
+}
+
+const enableButtonCheckout = (value) => {
+  const checkoutButton = document.getElementById('checkout');
+  if (checkoutButton) {
+    checkoutButton.disabled = value;
+  }
+};
+
+const horarioAtencion = (horariosAtencion) => {
+
+  console.log(horariosAtencion);
+
+  const horariosAtencionFinal = JSON.parse(horariosAtencion);
+  const diasSemana = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const hoy = new Date();
+  const diaActual = diasSemana[hoy.getDay()];
+  return horariosAtencionFinal.find(horario => horario.dia === diaActual);
+};
+
+const getCartTotal = async () =>{
+
+  try {
+        const response = await fetch('/cart.js');
+        const cart = await response.json();
+        return cart.total_price / 100;
+    } catch (error) {
+        console.error('Error al obtener el total del carrito:', error);
+    }
+
+};
+
+const changeEnableCarrier = () => {
+
+  console.log();
+}
+
+const fetchTiempoPreparacion = (productos) => {
+  return new Promise((resolve, reject) => {
+    fetch('/cart.js')
+      .then(response => response.json())
+      .then(cart => {
+        let tiempoPreparacionTotal = cart.items.reduce((total, item) => {
+          const producto = productos.find(p => p.title === item.product_title);
+          return producto ? total + producto.preparationTime : total;
+        }, 0);
+        resolve(tiempoPreparacionTotal);
+      })
+      .catch(error => reject('Error al obtener el carrito: ' + error));
+  });
+};
+
+const actualizarPropina = (propina) => {
+  const tipContainer = document.querySelector('.tip-container');
+  const customTipInput = document.querySelector('.custom-tip');
+  const textoPropina = document.querySelector('.textoPropina');
+
+  tipContainer.innerHTML = '';
+  customTipInput.style.display = 'none';
+  textoPropina.style.display = 'none';
+
+  switch (propina.tipo) {
+    case '1':
+    case '4':
+      customTipInput.placeholder = propina.tipo === '1' ? 'Enter tip amount' : 'Enter amount for free tip';
+      customTipInput.style.display = 'block';
+      break;
+    case '2':
+      tipContainer.style.display = 'none';
+      break;
+    case '3':
+    case '5':
+      textoPropina.style.display = 'block';
+      textoPropina.innerText = `The tip is ${propina.tipo === '3' ? 'a fixed amount' : `a percentage of ${propina.valor}%`} of $${propina.valor}.`;
+      break;
+    default:
+      console.error('Tipo de propina desconocido');
+      break;
+  }
+};
+
+const getPropinaValue = (propina) => {
+  if (['2', '3', '5'].includes(propina.tipo)) {
+    const tiposPropina = {
+      2: 'Cost calculated by Uber',
+      3: 'Based on a fixed price',
+      5: 'By percentage',
+    };
+    return {[tiposPropina[propina.tipo]]: propina.valor};
+  }
+  return null;
+};
+
+const displayHorario = (horarioHoy, sucursal) => {
+
+  document.getElementById('from').innerText = `Delivery from ${sucursal.direccion}`;
+  document.getElementById('openingHours').innerText = `Opening Hours: ${horarioHoy.apertura} - ${horarioHoy.cierre}`;
+
+  const iframe = document.createElement('iframe');
+  iframe.src = `https://www.google.com/maps/embed/v1/place?key=AIzaSyDGa5xQES7MMhkvcpIA5Y85QzlVEqL1sJg&q=${sucursal.latitud},${sucursal.longitud}&zoom=14`;
+  iframe.width = '100%';
+  iframe.height = '100%';
+  iframe.frameBorder = '0';
+  iframe.style.border = '0';
+  iframe.allowFullscreen = true;
+  document.getElementById('mapa').appendChild(iframe);
+};
+
+const UpdateProperties = (valoresNuevos) => {
+  document.getElementById('checkout').disabled = true;
+
+  fetch('/cart.js')
+    .then(response => response.json())  // Leemos el body una vez
+    .then(cart => {
+      const currentProperties = cart.items[0]?.properties || {};  // Usamos las propiedades del primer ítem del carrito
+      const updatedProperties = {...currentProperties, ...valoresNuevos};  // Actualizamos las propiedades
+
+      console.log(updatedProperties);
+
+      // Ahora enviamos la solicitud con las propiedades actualizadas
+      return fetch('/cart/change.js', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          line: 1,
+          quantity: 1,
+          properties: updatedProperties,
+        }),
+      });
+    })
+    .then(response => response.json())  // Aquí leemos la respuesta de '/cart/change.js'
+    .then(() => {
+      document.getElementById('checkout').disabled = false;  // Habilitamos el checkout
+    })
+    .catch(error => {
+      console.error('Error:', error);  // Si ocurre un error, lo mostramos en la consola
+      document.getElementById('checkout').disabled = false;  // Aseguramos que el botón se habilite si ocurre un error
+    });
+};
+
+const initializeDateAndTime = () => {
+  const now = new Date();
+  const dateInput = document.getElementById('dateInput');
+  const formattedDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  dateInput.value = formattedDate;
+};
+
+const initEventListeners = () => {
+  document.getElementById('asapButton').addEventListener('click', () => {
+    document.getElementById('scheduleDetails').style.display = 'none';
+    document.getElementById('asapButton').classList.add('active');
+    document.getElementById('scheduleButton').classList.remove('active');
+    updateCartWithDeliveryTime('ahora mismo');
+  });
+
+  document.getElementById('scheduleButton').addEventListener('click', () => {
+    document.getElementById('scheduleDetails').style.display = 'block';
+    document.getElementById('scheduleButton').classList.add('active');
+    document.getElementById('asapButton').classList.remove('active');
+  });
+
+  document.getElementById('dateInput').addEventListener('change', (e) => {
+    const selectedDate = e.target.value;
+    if (selectedDate) {
+      updateCartWithDeliveryTime(new Date(selectedDate).toISOString());
+    } else {
+      alert("Por favor, selecciona una fecha y una hora.");
+    }
+  });
+
+  document.querySelectorAll('.tip-button').forEach(button => {
+    button.addEventListener('click', function() {
+      document.querySelectorAll('.tip-button').forEach(btn => btn.classList.remove('active'));
+      this.classList.add('active');
+      document.querySelector('.custom-tip').value = this.getAttribute('data-tip');
+    });
+  });
+
+  document.getElementById('dropoffInput').addEventListener('input', (e) => {
+    UpdateProperties({"IndicacionesDropoff": e.target.value});
+  });
+
+  document.getElementById('custom-tip').addEventListener('input', (e) => {
+    UpdateProperties({"propina": e.target.value});
+  });
+};
+
+const updateCartWithDeliveryTime = (deliveryTime) => {
+  fetch('/cart.js')
+    .then(response => response.json())
+    .then(cart => {
+      const currentProperties = cart.items[0]?.properties || {};
+      const updatedProperties = {...currentProperties, "tiempo de entrega": deliveryTime};
+
+      fetch('/cart/change.js', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          line: 1,
+          quantity: 1,
+          properties: updatedProperties,
+        }),
+      })
+        .then(response => response.json())
+        .then(() => document.getElementById('checkout').disabled = false)
+        .catch(error => console.error('Error al actualizar carrito:', error));
+    })
+    .catch(error => console.error('Error al obtener el carrito:', error));
+};
+
+async function enableCarrierService(habilitado) {
+  try {
+    const response = await fetch('https://boxed-jc-choir-answers.trycloudflare.com/api/enableCarrier', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ shop: window.Shopify.shop, habilitado: habilitado }),
+    });
+
+    if (!response.ok) throw new Error('Error en el enable carrier');
+
+    const data = await response.json();
+    console.log('Respuesta del POST:', data);
+  } catch (error) {
+    console.error('Error al habilitar el carrier service:', error);
+  }
+}
+
+initializeDateAndTime();
+initEventListeners();
+fetchSettings();
+
+console.log('finalizando...');
+
+if (navigator.geolocation) {
+  // La geolocalización está disponible en el navegador
+  navigator.geolocation.getCurrentPosition((position) => {
+    // Obtener la latitud y longitud
+    const latitude = position.coords.latitude;
+    const longitude = position.coords.longitude;
+
+    console.log('Latitud: ', latitude);
+    console.log('Longitud: ', longitude);
+  }, (error) => {
+    // Si hay un error (por ejemplo, si el usuario no da permiso)
+    console.error('Error al obtener la geolocalización: ', error);
+  });
+} else {
+  console.log('La geolocalización no está soportada por este navegador.');
+}
+
+</script>

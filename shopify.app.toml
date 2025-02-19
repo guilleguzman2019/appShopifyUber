@@ -1,0 +1,37 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "60a79f9d5a9e2afd0603c0d3de3ab988"
+application_url = "https://brunette-rocks-yarn-kuwait.trycloudflare.com"
+embedded = true
+name = "ethical-sale-app"
+handle = "ethical-sale-app-15"
+
+[build]
+automatically_update_urls_on_dev = true
+dev_store_url = "pruebafinal566.myshopify.com"
+include_config_on_deploy = true
+
+[webhooks]
+api_version = "2024-10"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/scopes_update" ]
+  uri = "/webhooks/app/scopes_update"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "/webhooks/app/uninstalled"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_customers,read_locations,read_orders,read_products,read_shipping,write_orders,write_products,write_shipping,unauthenticated_read_customers"
+
+[auth]
+redirect_urls = [
+  "https://brunette-rocks-yarn-kuwait.trycloudflare.com/auth/callback",
+  "https://brunette-rocks-yarn-kuwait.trycloudflare.com/auth/shopify/callback",
+  "https://brunette-rocks-yarn-kuwait.trycloudflare.com/api/auth/callback"
+]
+
+[pos]
+embedded = false
