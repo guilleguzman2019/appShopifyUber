@@ -12,15 +12,12 @@ import ComponentProducts from '../components/ComponentProducts';
 import ComponentPedidos from '../components/ComponentPedidos';
 import ComponentSucursales from '../components/ComponentSucursales';
 
+
 export const loader = async ({ request }) => {
 
   try {
     // Authentication
     const { admin, session } = await authenticate.admin(request);
-    
-    if (!session?.shop) {
-      throw new Error('No shop found in session');
-    }
     
     // GraphQL query execution with error handling
     const response = await admin.graphql(`#graphql
@@ -66,7 +63,7 @@ export const loader = async ({ request }) => {
             }
           }
         }
-        orders(first: 100) {
+        orders(first: 200) {
           edges {
             node {
               id
@@ -92,12 +89,9 @@ export const loader = async ({ request }) => {
             }
           }
         }
-      }`);
-      
-    if (!response.ok) {
-      throw new Error(`GraphQL request failed: ${response.statusText}`);
-    }
-    
+    }`);
+
+
     const { data } = await response.json();
     
     // Database operations with transaction
@@ -162,6 +156,7 @@ export const loader = async ({ request }) => {
           length: 1,
           height: 1,
           depth: 1,
+          weight:1,
           tiendaId: store.id,
         }));
       
@@ -187,9 +182,9 @@ export const loader = async ({ request }) => {
         ordenes: data.orders.edges,
         error: null
       };
+
     });
-    
-    // Ensure we're returning a properly structured response
+
     return new Response(JSON.stringify(result), {
       headers: {
         'Content-Type': 'application/json',
@@ -214,23 +209,15 @@ export const loader = async ({ request }) => {
   }
 };
 
+
 export const action = async ({ request }) => {
 
-  let settings = await request.formData();
-  
-  settings = Object.fromEntries(settings);
 
     try {
-      const tienda = await prisma.tienda.update({
-          where: { id: 7 },
-          data: {
-            nombre: 'prueba999'
-          }
-        });
-      
       return json({ success: true, mensaje: 'hola mundo'});
+
     } catch (error) {
-      console.error("Error en ajustes:", error);
+      console.error("Error:", error);
       return json({ 
         success: false, 
         error: error.message 
@@ -240,13 +227,12 @@ export const action = async ({ request }) => {
 };
 
 
-
 const AdditionalPage = () => {
 
   const { tienda, productos, ordenes, error,} = useLoaderData();
   const [pestanaActiva, setPestanaActiva] = useState('Settings');
 
-  console.log(tienda);
+  console.log(error);
 
 
   // Componentes de contenido por pestaña

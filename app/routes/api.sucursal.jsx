@@ -19,7 +19,6 @@ export let action = async ({ request }) => {
             direccion: sucursal.direccion,
             latitud: parseFloat(sucursal.latitud),
             longitud:parseFloat(sucursal.longitud),
-            esPrincipal: sucursal.esPrincipal, // Recibe false del frontend
             telefono: sucursal.telefono,
             email:sucursal.email,
             codigoPostal: sucursal.codigoPostal,

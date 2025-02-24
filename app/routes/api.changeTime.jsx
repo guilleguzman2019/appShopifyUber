@@ -4,7 +4,7 @@ export const action = async ({ request }) => {
   try {
     const body = await request.json();
 
-    const { tiendaId, preparationTime, productoId, length , heigth, deepth } = body;
+    const { tiendaId, preparationTime, productoId, length , heigth, deepth, weight } = body;
     
     // Update only the specific product
     const updatedProduct = await prisma.producto.update({
@@ -15,7 +15,8 @@ export const action = async ({ request }) => {
         preparationTime,
         length:parseFloat(length),
         height:parseFloat(heigth),
-        depth:parseFloat(deepth)
+        depth:parseFloat(deepth),
+        weight:parseFloat(weight)
       },
     });
     

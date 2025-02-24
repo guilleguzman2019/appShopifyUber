@@ -1,7 +1,7 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "60a79f9d5a9e2afd0603c0d3de3ab988"
-application_url = "https://brunette-rocks-yarn-kuwait.trycloudflare.com"
+application_url = "https://sealed-briefing-lasting-stations.trycloudflare.com"
 embedded = true
 name = "ethical-sale-app"
 handle = "ethical-sale-app-15"
@@ -28,9 +28,9 @@ scopes = "read_customers,read_locations,read_orders,read_products,read_shipping,
 
 [auth]
 redirect_urls = [
-  "https://brunette-rocks-yarn-kuwait.trycloudflare.com/auth/callback",
-  "https://brunette-rocks-yarn-kuwait.trycloudflare.com/auth/shopify/callback",
-  "https://brunette-rocks-yarn-kuwait.trycloudflare.com/api/auth/callback"
+  "https://sealed-briefing-lasting-stations.trycloudflare.com/auth/callback",
+  "https://sealed-briefing-lasting-stations.trycloudflare.com/auth/shopify/callback",
+  "https://sealed-briefing-lasting-stations.trycloudflare.com/api/auth/callback"
 ]
 
 [pos]

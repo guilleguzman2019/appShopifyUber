@@ -6,6 +6,12 @@ import {getUberQuote} from '../functions/getDeliveryQuote'
 
 import {getCountryName} from '../functions/getDeliveryQuote'
 
+import {sucursalMasCercana} from '../functions/getDeliveryQuote'
+
+import {obtenerCoordenadasDeDireccion} from '../functions/getDeliveryQuote'
+
+import {getOrigenPickup} from '../functions/getDeliveryQuote'
+
 export async function action({ request }) {
 
   try {
@@ -13,59 +19,38 @@ export async function action({ request }) {
     // Obtener datos de la solicitud
     const data = await request.json();
 
-    let store = await prisma.tienda.findUnique({
-      where: {
-        id: data.rate.items[0].properties.idTienda 
-      },
-      include: {
-        ajustes: true,
-        sucursales:true,
-        propina: true,
-        ajustesPickupDrop:true,
-        ajustesProductos:true,
-        productos:true
-      }
-    });
+    const moneda = {
+      "AR": "ARS",
+      "MX": "MXN",
+      "US": "USD",
+    }
 
-    let sucursal =await prisma.sucursal.findFirst({
-      where: {
-        tiendaId: data.rate.items[0].properties.idTienda,
-        esPrincipal: true
-      }
-    });
+    const idTienda = data.rate.items[0].properties.idTienda ;
 
+    const ajustesTienda = await obtenerAjustesDeTienda(idTienda);
 
-    //var data = {"rate":{"origin":{"country":"AR","postal_code":"X5000","province":"X","city":"Córdoba","name":null,"address1":"Avenida Colón 76, centro","address2":"","address3":null,"latitude":-31.4132625,"longitude":-64.1839189,"phone":"+543513289703","fax":null,"email":null,"address_type":null,"company_name":"pruebafinal566"},"destination":{"country":"AR","postal_code":"5010","province":"X","city":"Córdoba","name":"GUILLERMO ALEJANDRO GUZMAN","address1":"Aviador Locatelli 2609, villa adela","address2":null,"address3":null,"latitude":-31.4391517,"longitude":-64.2500081,"phone":null,"fax":null,"email":null,"address_type":null,"company_name":null},"items":[{"name":"Yellow Snowboar","sku":"","quantity":1,"grams":522000,"price":10000,"vendor":"pruebafinal566","requires_shipping":true,"taxable":true,"fulfillment_service":"manual","properties":{},"product_id":7476932378710,"variant_id":42006006497366}],"currency":"ARS","locale":"en-AR"}};
-    
-    // Obtener token de Uber
-    const uberToken = await getUberToken(store.ajustes);
+    const uberToken = await getUberToken(ajustesTienda);
 
-    const origin = {latitude: sucursal.latitud , longitude: sucursal.longitud };
+    const destinoData = data.rate.destination ;
 
-    const destination = data.rate.destination;
+    const origin = await getOrigenPickup(idTienda ,destinoData);
 
-    const pais = await getCountryName(data.rate.destination.country);
+    const uberQuote = await getUberQuote(ajustesTienda, uberToken, origin, destinoData);
 
-
-    const uberQuote = await getUberQuote(store.ajustes, uberToken, origin, destination, pais);
-
-    //return uberQuote;
-    
-
-    // Preparar respuesta para Shopify
     const rates = {
       rates: [
         {
-          service_name: store.ajustes.titulo,
+          service_name: ajustesTienda.titulo,
           service_code: "UBER_DIRECT",
           total_price: uberQuote.fee,
-          currency: "MXN",
+          currency: moneda[destinoData.country],
           description: `Delivery time of ${uberQuote.duration} minutes.`
         },
       ],
     };
 
     return json(rates, { status: 200 });
+
   } catch (error) {
     console.error('Error en action:', error);
     // En caso de error, devolver una tarifa por defecto o manejar el error según necesites
@@ -77,4 +62,39 @@ export async function action({ request }) {
     }, { status: 200 });
   }
 }
+
+async function obtenerAjustesDeTienda(idTienda) {
+  try {
+    // Consultar la tienda por su ID, incluyendo los ajustes
+    const store = await prisma.tienda.findUnique({
+      where: {
+        id: idTienda
+      },
+      include: {
+        ajustes: true,  // Incluir los ajustes de la tienda
+      }
+    });
+
+    // Verificar si la tienda existe
+    if (!store) {
+      console.error(`Tienda con ID ${idTienda} no encontrada.`);
+      return null;
+    }
+
+    // Validación de los ajustes
+    const ajustes = store?.ajustes || {};  // Si no hay ajustes, asignamos un objeto vacío
+    const apiKey = ajustes ? ajustes.apiKey : null;
+    const secretKey = ajustes ? ajustes.secretKey : null;
+    const customer = ajustes ? ajustes.customer : null;
+    const titulo = ajustes ? ajustes.titulo : null;
+
+    // Retornar los valores de los ajustes
+    return { apiKey, secretKey, customer, titulo };
+  } catch (error) {
+    console.error('Error al obtener la tienda:', error);
+    throw error;  // Propagar el error para que pueda ser manejado por quien llame a esta función
+  }
+}
+
+
 

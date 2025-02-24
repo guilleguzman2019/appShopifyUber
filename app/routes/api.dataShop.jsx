@@ -23,10 +23,15 @@ export const action = async ({ request }) => {
     }
   });
 
+   // Eliminar apiKey y secretKey de ajustes
+  if (tiendafinal && tiendafinal.ajustes) {
+    const { apiKey, secretKey, ...ajustesSinKeys } = tiendafinal.ajustes;
+    tiendafinal.ajustes = ajustesSinKeys;
+  }
+
   const sucursales = await prisma.sucursal.findMany({
     where: {
-      tiendaId: tiendafinal.id,
-      esPrincipal: true
+      tiendaId: tiendafinal.id
     }
   });
   

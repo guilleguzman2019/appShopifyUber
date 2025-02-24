@@ -79,6 +79,7 @@ model Producto {
   length           Float
   height           Float
   depth            Float
+  weight           Float
   tiendaId         Int?     // ID de la tienda a la que pertenece el producto (opcional)
   tienda           Tienda?  @relation(fields: [tiendaId], references: [id])
   createdAt        DateTime @default(now())
@@ -98,7 +99,6 @@ model Sucursal {
   email            String
   tiendaId         Int
   tienda           Tienda   @relation(fields: [tiendaId], references: [id])
-  esPrincipal      Boolean  @default(false) // Nuevo campo para identificar sucursal principal
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 }

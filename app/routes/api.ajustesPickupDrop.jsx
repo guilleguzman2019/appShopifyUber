@@ -1,6 +1,7 @@
 import { json } from "@remix-run/node";
 
 export let action = async ({ request }) => {
+
   const body = await request.json();
   const {
     tiendaId,
@@ -25,7 +26,7 @@ export let action = async ({ request }) => {
         nombreFirmaDrop: drop.nombreFirma ?? false,
         relacionFirmaDrop: drop.relacionFirma ?? false,
         fotoDrop: drop.foto ?? false,
-        edadMinimaDrop: drop.edadMinima ?? null, // Solo actualizamos edadMinimaDrop para el Drop
+        edadMinimaDrop: drop.edadMinima ? parseInt(drop.edadMinima) : null, // Solo actualizamos edadMinimaDrop para el Drop
         pincodeDrop: drop.pincode ?? false,
       },
       create: {
@@ -40,7 +41,7 @@ export let action = async ({ request }) => {
         nombreFirmaDrop: drop.nombreFirma ?? false,
         relacionFirmaDrop: drop.relacionFirma ?? false,
         fotoDrop: drop.foto ?? false,
-        edadMinimaDrop: drop.edadMinima ?? null, // Solo creamos edadMinimaDrop para el Drop
+        edadMinimaDrop: drop.edadMinima ? parseInt(drop.edadMinima) : null, // Solo actualizamos edadMinimaDrop para el Drop
         pincodeDrop: drop.pincode ?? false,
       },
     });
@@ -54,3 +55,9 @@ export let action = async ({ request }) => {
     );
   }
 };
+
+
+export const loader = async ({ request }) => {
+
+  return 'hola mundo';
+}

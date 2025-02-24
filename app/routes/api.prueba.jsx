@@ -22,43 +22,17 @@ export const action = async ({ request }) => {
 
 export async function loader() {
 
-  const session = await prisma.session.findFirst({
-    where: {
-      shop: 'pruebafinal566.myshopify.com',
-    }
-  });
   
 
-  const token =  session.accessToken ;
-
-  const query = `
-    query {
-      shop {
-        id
-        name
-      }
+  const verificacion = await prisma.ajustesPickupDrop.findMany({
+    where: {
+      tiendaId: 7,
     }
-  `;
-
-
-  const response = await fetch('https://pruebafinal566.myshopify.com/admin/api/2023-07/graphql.json', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/graphql',
-      'X-Shopify-Access-Token': session.accessToken,
-    },
-    body: query
   });
 
-  const data = await response.json();
+  const {pickup_verification, dropoff_verification} = transformVerificationData(verificacion[0]);
 
-  if (response.ok) {
-    // Si la respuesta es exitosa, puedes devolver los datos o el id de la tienda.
-    return json(data.data);
-  } else {
-    // Si la respuesta no es exitosa, puedes manejar el error.
-    throw new Error('Error al obtener datos de Shopify');
-  }
+  return dropoff_verification ;
 }
 
 
@@ -204,5 +178,84 @@ export function getCountryName(code) {
       })
       .catch(error => reject(error));  // Rechazar la promesa en caso de error
   });
+}
+
+function getProductosFinal(lineItems, productsDB, ajustesProductos) {
+  // Map through line items and find matching products in DB
+  return lineItems.map(lineItem => {
+    // Find matching product in DB by title
+    const dbProduct = productsDB.find(product => 
+      product.title.toLowerCase() === lineItem.title.toLowerCase()
+    );
+
+    // If found in DB, use its values, otherwise use defaults
+    return {
+      name: lineItem.title || '',
+      quantity: lineItem.quantity || 1,
+      size: lineItem.variant_title || 'small',
+      dimensions: {
+        length: dbProduct?.length || ajustesProductos.largo,
+        height: dbProduct?.height || ajustesProductos.alto,
+        depth: dbProduct?.depth || ajustesProductos,
+      },
+      // Since price_set is [Object] in the example, we'll need to ensure price is handled appropriately
+      // You may need to adjust this based on the actual price structure
+      price: lineItem.price ? parseFloat(lineItem.price) : 0,
+      weight: dbProduct?.weight || ajustesProductos,
+      vat_percentage: 1250000
+    };
+  });
+}
+
+function transformVerificationData(prismaData) {
+  // Transform pickup verification
+  const pickup_verification = {
+      signature: prismaData.firmaPickup,
+      signature_requirement: {
+          enabled: prismaData.firmaPickup,
+          collect_signer_name: prismaData.nombreFirmaPickup,
+          collect_signer_relationship: prismaData.relacionFirmaPickup
+      },
+      barcodes: [
+          {
+              value: "string",
+              type: "CODE39"
+          }
+      ],
+      identification: {
+          min_age: prismaData.edadMinimaDrop, // Using dropoff age as it's the only one provided
+          no_sobriety_check: false
+      },
+      picture: prismaData.fotoPickup
+  };
+
+  // Transform dropoff verification
+  const dropoff_verification = {
+      signature: prismaData.firmaDrop,
+      signature_requirement: {
+          enabled: prismaData.firmaDrop,
+          collect_signer_name: prismaData.nombreFirmaDrop,
+          collect_signer_relationship: prismaData.relacionFirmaDrop
+      },
+      barcodes: [
+          {
+              value: "string",
+              type: "CODE39"
+          }
+      ],
+      identification: {
+          min_age: prismaData.edadMinimaDrop,
+          no_sobriety_check: false
+      },
+      pincode: {
+          enabled: prismaData.pincodeDrop
+      },
+      picture: prismaData.fotoDrop
+  };
+
+  return {
+      pickup_verification,
+      dropoff_verification
+  };
 }
 

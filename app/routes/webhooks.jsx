@@ -7,8 +7,9 @@ import {getCountryName} from '../functions/getDeliveryQuote'
 import {getAddressGoogle} from '../functions/getDeliveryQuote'
 import {getAddressGoogle2} from '../functions/getDeliveryQuote'
 
-import nodemailer from 'nodemailer';
+import {sucursalMasCercana} from '../functions/getDeliveryQuote'
 
+import nodemailer from 'nodemailer';
 
 import { getAccessToken } from 'uber-direct/auth';
 
@@ -64,103 +65,51 @@ const updateOrders = async (payload, admin) => {
 
 const paidOrders = async (payload, admin) => {
 
-
   try {
-
-    //console.log(`estos son los datos del payload paid ${payload}`);
-
-    //const direccion1 = payload.shipping_address.address1 ;
 
     const orderId = payload.id; // id de la orden
 
     const datos = payload.line_items[0].properties; // propiedades que se van a usar en el uber direct
 
-    const datosTransformados = datos.reduce((acc, item) => {
-      acc[item.name] = item.value; // Asigna el `value` al nombre
-      return acc;
-    }, {});
+    const {idTienda , IndicacionesDropoff , diaHorariofinal, propina , tiempoPreparacion } = dataFormated(datos);
 
-    const id = datosTransformados?.idTienda || '';
-    const indicacionesEntrega = datosTransformados?.IndicacionesDropoff || '';
-    const diaHora = datosTransformados?.diaHorariofinal || '';
-    const propina = datosTransformados?.propina || '';
-    const tiempoPreparacion = datosTransformados?.tiempoPreparacion || '';
-
-    let store = await prisma.tienda.findUnique({
-      where: {
-        id: id 
-      },
-      include: {
-        ajustes: true,
-        ajustesEmail:true
-      }
-    });
-
-    const apiKey = store.ajustes?.apiKey || '';
-
-    const secretKey = store.ajustes?.secretKey || '';
-
-    const customer = store.ajustes?.customer || '';
+    const {apiKey, secretKey, customer, user , pass} = await getAjustesTienda(idTienda);
 
     // Sobrescribe las variables de entorno programáticamente
     process.env.UBER_DIRECT_CLIENT_ID = apiKey;
     process.env.UBER_DIRECT_CLIENT_SECRET = secretKey;
     process.env.UBER_DIRECT_CUSTOMER_ID = customer;
-    
 
-    const sucursal = await prisma.sucursal.findMany({
-      where: {
-        tiendaId: id,
-        esPrincipal: true
-      }
-    });
+    const sucursales = await getSucursales(idTienda);
 
-    const latOrigin = sucursal[0].latitud;
-    const logOrigin = sucursal[0].longitud;
+    const destino = payload.shipping_address || {} ;
 
-    console.log('esta es la latitud de la tienda origen');
-    console.log(latOrigin);
-    console.log(logOrigin);
+    const { latitude, longitude } = getDestino(destino);
 
-    const direccionPickup = await getAddressGoogle(latOrigin, logOrigin);
+    var sucursalfinal = await sucursalMasCercana(idTienda, { latitude, longitude });
 
-    console.log(direccionPickup);
+    const { latitud,longitud } = sucursalfinal || {};
 
-    const latDestino = payload.shipping_address.latitude || payload.billing_address.latitude;
-    const logDestino = payload.shipping_address.longitude || payload.billing_address.longitude;
+    const direccionPickup = await getAddressGoogle(latitud, longitud);
 
-    console.log(latDestino);
-    console.log(logDestino);
+    const direccionDrop = await getAddressGoogle(latitude, longitude);
 
-    const direccionDrop = await getAddressGoogle(latDestino, logDestino);
-
-    const uberToken = await getUberToken(store.ajustes);
-
+    const uberToken = await getUberToken({apiKey, secretKey, customer});
 
     const deliveriesClient = createDeliveriesClient(uberToken);
 
-    const productosPaylod = payload.line_items;
-
     const productosPayload = payload.line_items;
 
-    const productosFinal = productosPayload.map(item => ({
-      name: item.name || '', 
-      quantity: item.quantity || 1, 
-      size: item.variant_title || 'small', 
-      dimensions: {
-        length: 20,  
-        height: 20,
-        depth: 20
-      },
-      price: parseFloat(item.price) || 0, 
-      weight: item.grams / 1000 || 1, 
-      vat_percentage: 1250000
-    }));
+    const productos = await getProductosFinal(idTienda, productosPayload);
+
+    const {pickup_verification, dropoff_verification} = await getVerificationData(idTienda);
+
+    const pickupReadyTime = "2025-02-22T23:00:00.000Z" ;
 
     const deliveryRequest = {
-      pickup_name: 'Mager',
+      pickup_name: 'Store Main',
       pickup_address: direccionPickup,
-      pickup_phone_number: '+14155551212',
+      pickup_phone_number: sucursalfinal.telefono || '+14155551212',
       pickup_verification: {
           signature: true,
           signature_requirement: {
@@ -180,7 +129,7 @@ const paidOrders = async (payload, admin) => {
           },
           picture: true
       },
-      dropoff_name: 'Anant',
+      dropoff_name: 'Client',
       dropoff_address: direccionDrop,
       dropoff_phone_number: '+14155551212',
       dropoff_verification: {
@@ -199,7 +148,8 @@ const paidOrders = async (payload, admin) => {
           },
           picture: true
       },
-      manifest_items: productosFinal,
+      //pickup_ready_dt: pickupReadyTime,
+      manifest_items: productos,
       testSpecifications: {
         roboCourierSpecification: {
           mode: 'auto',
@@ -225,121 +175,19 @@ const paidOrders = async (payload, admin) => {
       },
     };
 
-    console.log(payload.shipping_lines[0].code);
+    const tipoEnvio = payload.shipping_lines[0].code;
 
-    if(payload.shipping_lines[0].code == 'UBER_DIRECT'){
+    if(tipoEnvio == 'UBER_DIRECT'){
 
       const delivery = await deliveriesClient.createDelivery(deliveryRequest);
 
-      const urlTracking = delivery.tracking_url ;
-
-      const nuevaUrl = urlTracking.replace("/ar/", "/mx/");
-      console.log(nuevaUrl);
-
-      console.log(delivery);
+      const urlTraking = getUrlTracking(delivery);
 
       const pincode = delivery.return.verification_requirements.pincode.value || '6789';
 
-      const transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-          user: store.ajustesEmail.user,
-          pass: store.ajustesEmail.pass,
-        },
-      });
+      const email = payload.email || 'guillermoguzman.2016@gmail.com';
 
-      const to = payload.email || 'guillermoguzman.2016@gmail.com';
-    
-      // Configura el mensaje de correo
-      const mailOptions = {
-        from: store.ajustesEmail.user, // Correo electrónico de origen
-        to: to, // Correo electrónico de destino
-        subject: 'AVISO DE ENVIO CON UBER DIRECT', // Asunto del correo
-        html: `<!DOCTYPE html>
-        <html lang="es">
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Detalles de Pedido</title>
-          <style>
-            body {
-              font-family: Arial, sans-serif;
-              background-color: #f4f4f4;
-              margin: 0;
-              padding: 0;
-            }
-            table {
-              width: 100%;
-              border-collapse: collapse;
-              margin-top: 20px;
-            }
-            th, td {
-              padding: 8px 12px;
-              text-align: left;
-              border: 1px solid #ddd;
-            }
-            th {
-              background-color: #4CAF50;
-              color: white;
-            }
-            td {
-              background-color: #ffffff;
-            }
-            .header {
-              background-color: #333;
-              color: white;
-              text-align: center;
-              padding: 10px 0;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h2>Detalles del Pedido</h2>
-          </div>
-          
-          <table>
-            <tr>
-              <th>Dirección de Pickup</th>
-              <td>${delivery.pickup.address}</td>
-            </tr>
-            <tr>
-              <th>Dirección de Dropoff</th>
-              <td>${delivery.dropoff.address}</td>
-            </tr>
-            <tr>
-              <th>Total del Envio</th>
-              <td>${delivery.fee} ${delivery.currency}</td>
-            </tr>
-            <tr>
-              <th>Pincode</th>
-              <td>${delivery.dropoff.verification_requirements.pincode.value}</td>
-            </tr>
-          </table>
-      
-          <h3>Lista de Productos</h3>
-          <table>
-            <thead>
-              <tr>
-                <th>Producto</th>
-                <th>Cantidad</th>
-                <th>Precio</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${delivery.manifest_items.map(item => `
-              <tr>
-                <td>${item.name}</td>
-                <td>${item.quantity}</td>
-                <td>${item.price} ${delivery.currency}</td>
-              </tr>`).join('')}
-            </tbody>
-          </table>
-        </body>
-        </html>`
-      };
-
-      await transporter.sendMail(mailOptions);
+      await envioEmail({user,pass},email, delivery);
 
       const responsefinal = await admin.graphql(
         `#graphql
@@ -367,7 +215,7 @@ const paidOrders = async (payload, admin) => {
                 namespace: "example_namespace",
                 ownerId: `gid://shopify/Order/${orderId}`,
                 type: "single_line_text_field",
-                value: nuevaUrl
+                value: urlTraking
               }
             ]
           },
@@ -387,10 +235,286 @@ const paidOrders = async (payload, admin) => {
 
 }
 
+const dataFormated = (datos) => {
+
+  const datosTransformados = datos.reduce((acc, item) => {
+    acc[item.name] = item.value; // Asigna el `value` al nombre
+    return acc;
+  }, {});
+
+  // Desestructuración con valores por defecto
+  const {
+    idTienda = '',
+    IndicacionesDropoff = '',
+    diaHorariofinal = '',
+    propina = '',
+    tiempoPreparacion = ''
+  } = datosTransformados || {}; 
+
+  return { idTienda, IndicacionesDropoff, diaHorariofinal, propina, tiempoPreparacion };
+};
+
+const getDestino = (destino) => {
+  if (!destino) return null; // Manejo de caso donde destino es undefined o null
+
+  const { latitude, longitude } = destino; // Extrae las propiedades correctamente
+
+  return { latitude, longitude }; // Devuelve el objeto correctamente
+};
+
+const getAjustesTienda = async (id) => {
+
+  let store = await prisma.tienda.findUnique({
+    where: {
+      id: id
+    },
+    include: {
+      ajustes: true,
+      ajustesEmail: true
+    }
+  });
+
+  if (!store || !store.ajustes) {
+    return { apiKey: '', secretKey: '', customer: '' }; // Retorna valores vacíos si no hay datos
+  }
+
+  const { apiKey = '', secretKey = '', customer = '' } = store.ajustes;
+
+  const {user , pass} = store.ajustesEmail ;
+
+  return { apiKey, secretKey, customer, user, pass };
+};
+
+const getSucursales = async (id) =>{
+
+  const sucursales = await prisma.sucursal.findMany({
+    where: {
+      tiendaId: id,
+    }
+  });
+
+  return sucursales ;
+}
+
+const envioEmail = async (ajustes, email, delivery) => {
+
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: ajustes.user,
+      pass: ajustes.pass,
+    },
+  });
+
+  // Configura el mensaje de correo
+  const mailOptions = {
+    from: ajustes.user, // Correo electrónico de origen
+    to: email, // Correo electrónico de destino
+    subject: 'UBER DIRECT SHIPPING NOTICE', // Asunto del correo
+    html: `<!DOCTYPE html>
+    <html lang="es">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Order Details</title>
+      <style>
+        body {
+          font-family: Arial, sans-serif;
+          background-color: #f4f4f4;
+          margin: 0;
+          padding: 0;
+        }
+        table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-top: 20px;
+        }
+        th, td {
+          padding: 8px 12px;
+          text-align: left;
+          border: 1px solid #ddd;
+        }
+        th {
+          background-color: #4CAF50;
+          color: white;
+        }
+        td {
+          background-color: #ffffff;
+        }
+        .header {
+          background-color: #333;
+          color: white;
+          text-align: center;
+          padding: 10px 0;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <h2>Order Details</h2>
+      </div>
+      
+      <table>
+        <tr>
+          <th>Pickup Address</th>
+          <td>${delivery.pickup.address}</td>
+        </tr>
+        <tr>
+          <th>Dropoff Address</th>
+          <td>${delivery.dropoff.address}</td>
+        </tr>
+        <tr>
+          <th>Total Shipping</th>
+          <td>${delivery.fee} ${delivery.currency}</td>
+        </tr>
+        <tr>
+          <th>Pincode</th>
+          <td>${delivery.dropoff.verification_requirements.pincode.value}</td>
+        </tr>
+      </table>
+  
+      <h3>Product List</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th>Amount</th>
+            <th>Price</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${delivery.manifest_items.map(item => `
+          <tr>
+            <td>${item.name}</td>
+            <td>${item.quantity}</td>
+            <td>${item.price} ${delivery.currency}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </body>
+    </html>`
+  };
+
+  await transporter.sendMail(mailOptions);
+
+  return {mensage: 'success'};
+
+}
+
+const getUrlTracking = (delivery) =>{
+
+  const urlTracking = delivery.tracking_url ;
+
+  const nuevaUrl = urlTracking.replace("/ar/", "/mx/");
+
+  return nuevaUrl ;
+};
+
+async function getProductosFinal(id ,lineItems) {
+
+  const productsDB = await prisma.producto.findMany({
+    where: {
+      tiendaId: id,
+    }
+  });
+
+  const ajustesProductos = await prisma.ajustesProducto.findMany({
+    where: {
+      tiendaId: id,
+    }
+  });
+
+  // Map through line items and find matching products in DB
+  return lineItems.map(lineItem => {
+    // Find matching product in DB by title
+    const dbProduct = productsDB.find(product => 
+      product.title.toLowerCase() === lineItem.title.toLowerCase()
+    );
+
+    // If found in DB, use its values, otherwise use defaults
+    return {
+      name: lineItem.title || '',
+      quantity: lineItem.quantity || 1,
+      size: lineItem.variant_title || 'small',
+      dimensions: {
+        length: dbProduct?.length || ajustesProductos.largo,
+        height: dbProduct?.height || ajustesProductos.alto,
+        depth: dbProduct?.depth || ajustesProductos.ancho,
+      },
+      // Since price_set is [Object] in the example, we'll need to ensure price is handled appropriately
+      // You may need to adjust this based on the actual price structure
+      price: lineItem.price ? parseFloat(lineItem.price) : 0,
+      weight: dbProduct?.weight || ajustesProductos.peso,
+      vat_percentage: 1250000
+    };
+  });
+}
+
+async function getVerificationData(id) {
+
+  const prismaData = await prisma.ajustesPickupDrop.findMany({
+    where: {
+      tiendaId: id,
+    }
+  });
+
+  // Transform pickup verification
+  const pickup_verification = {
+      signature: prismaData.firmaPickup,
+      signature_requirement: {
+          enabled: prismaData.firmaPickup,
+          collect_signer_name: prismaData.nombreFirmaPickup,
+          collect_signer_relationship: prismaData.relacionFirmaPickup
+      },
+      barcodes: [
+          {
+              value: "string",
+              type: "CODE39"
+          }
+      ],
+      identification: {
+          min_age: prismaData.edadMinimaDrop, // Using dropoff age as it's the only one provided
+          no_sobriety_check: false
+      },
+      picture: prismaData.fotoPickup
+  };
+
+  // Transform dropoff verification
+  const dropoff_verification = {
+      signature: prismaData.firmaDrop,
+      signature_requirement: {
+          enabled: prismaData.firmaDrop,
+          collect_signer_name: prismaData.nombreFirmaDrop,
+          collect_signer_relationship: prismaData.relacionFirmaDrop
+      },
+      barcodes: [
+          {
+              value: "string",
+              type: "CODE39"
+          }
+      ],
+      identification: {
+          min_age: prismaData.edadMinimaDrop,
+          no_sobriety_check: false
+      },
+      pincode: {
+          enabled: prismaData.pincodeDrop
+      },
+      picture: prismaData.fotoDrop
+  };
+
+  return {
+      pickup_verification,
+      dropoff_verification
+  };
+}
 
 export const action = async ({ request }) => {
-  const { topic, shop, session, admin, payload } =
-    await authenticate.webhook(request);
+
+  //const { topic, shop, session, admin, payload } = await request.json();
+ 
+
+  const { topic, shop, session, admin, payload } = await authenticate.webhook(request);
 
   if (!admin) {
     // The admin context isn't returned if the webhook fired after a shop was uninstalled.
@@ -415,9 +539,11 @@ export const action = async ({ request }) => {
       break;
     case "ORDERS_PAID":
       if (session) {
-        console.log("Order paid", payload);
+        
+        //console.log("Order paid", payload.line_items[0].properties);
 
         paidOrders(payload, admin);
+        //paidOrders(payload);
       }
   
       break;
@@ -430,3 +556,8 @@ export const action = async ({ request }) => {
 
   throw new Response();
 };
+
+export const loader = async ({ request }) => {
+
+  return 'hola mundo';
+}

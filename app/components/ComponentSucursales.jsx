@@ -32,32 +32,27 @@ const ComponentSucursales = ({ tienda: initialTienda, onSaveSucursal }) => {
     const totalPages = Math.ceil(tienda.sucursales.length / sucursalesPerPage);
 
     // Método para establecer sucursal principal
-    const handleSetPrincipal = async (sucursal) => {
+    const handleDelete = async (sucursal) => {
         try {
-            const response = await fetch("/api/changeSucursal", {
+            const response = await fetch("/api/deleteSucursal", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                 },
-                body: JSON.stringify({ sucursalId: sucursal.id, tienda: tienda.id }),
+                body: JSON.stringify({ sucursalId: sucursal.id }),
             });
-
+    
             const result = await response.json();
             if (result.success) {
-                // Update local state to reflect the change
-                const updatedSucursales = tienda.sucursales.map(s => ({
-                    ...s,
-                    esPrincipal: s.id === sucursal.id
-                }));
-
+                // Actualizar el estado eliminando la sucursal de la tienda
                 setTienda(prev => ({
                     ...prev,
-                    sucursales: updatedSucursales
+                    sucursales: prev.sucursales.filter(s => s.id !== sucursal.id)
                 }));
-
-                alert("Sucursal principal actualizada con éxito");
+    
+                alert("Sucursal eliminada con éxito");
             } else {
-                alert("Error al actualizar la sucursal principal: " + result.error);
+                alert("Error al eliminar la sucursal: " + result.error);
             }
         } catch (error) {
             alert("Error en la solicitud: " + error.message);
@@ -102,8 +97,7 @@ const ComponentSucursales = ({ tienda: initialTienda, onSaveSucursal }) => {
                 body: JSON.stringify({
                     tiendaId: tienda.id,
                     sucursal: {
-                        ...newSucursal,
-                        esPrincipal: false
+                        ...newSucursal
                     }
                 }),
             });
@@ -115,7 +109,6 @@ const ComponentSucursales = ({ tienda: initialTienda, onSaveSucursal }) => {
                 const newSucursalWithId = {
                     ...newSucursal,
                     id: data.sucursal.id, // Assuming the API returns the new sucursal with an ID
-                    esPrincipal: false
                 };
 
                 setTienda(prev => ({
@@ -169,7 +162,6 @@ const ComponentSucursales = ({ tienda: initialTienda, onSaveSucursal }) => {
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">City</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Phone</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Main</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                             </tr>
                         </thead>
@@ -181,18 +173,7 @@ const ComponentSucursales = ({ tienda: initialTienda, onSaveSucursal }) => {
                                     <td className="px-6 py-4">{sucursal.telefono}</td>
                                     <td className="px-6 py-4">{sucursal.email}</td>
                                     <td className="px-6 py-4">
-                                        {sucursal.esPrincipal ? 'Sí' : 'No'}
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        {!sucursal.esPrincipal &&
-                                            <button
-                                                onClick={() => handleSetPrincipal(sucursal)}
-                                                className="bg-blue-600 text-white px-2 py-2 rounded hover:bg-blue-700 mr-2"
-                                            >
-                                                Agregar Principal
-                                            </button>
-                                        }
-                                        <button className="mt-1 bg-red-500 text-white px-4 py-2 rounded hover:bg-red-700">
+                                        <button onClick={() => handleDelete(sucursal)} className="mt-1 bg-red-500 text-white px-4 py-2 rounded hover:bg-red-700">
                                             Eliminar
                                         </button>
                                     </td>

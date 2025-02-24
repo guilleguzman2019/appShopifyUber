@@ -11,6 +11,7 @@ const ComponentProducts = ({productos: initialProductos, tienda}) => {
     const [length, setLength] = useState('');
     const [heigth, setHeigth] = useState('');
     const [deepth, setDeepth] = useState('');
+    const [weight, setWeight] = useState('');
 
     // Get current products
     const indexOfLastProduct = currentPage * productsPerPage;
@@ -30,6 +31,7 @@ const ComponentProducts = ({productos: initialProductos, tienda}) => {
         setLength(product.length || '');
         setHeigth(product.height || '');
         setDeepth(product.depth || '');
+        setWeight(product.weight || '');
         setIsModalOpen(true);
     };
 
@@ -49,7 +51,8 @@ const ComponentProducts = ({productos: initialProductos, tienda}) => {
                     productoId: selectedProduct.id,
                     length: parseInt(length),
                     heigth: parseInt(heigth),
-                    deepth: parseInt(deepth)
+                    deepth: parseInt(deepth),
+                    weight: parseInt(weight)
                 }),
             });
 
@@ -68,7 +71,8 @@ const ComponentProducts = ({productos: initialProductos, tienda}) => {
                         preparationTime: parseInt(newTime),
                         length: parseInt(length),
                         height: parseInt(heigth),
-                        depth: parseInt(deepth)
+                        depth: parseInt(deepth),
+                        weight: parseInt(weight)
                     }
                     : product
             );
@@ -79,6 +83,7 @@ const ComponentProducts = ({productos: initialProductos, tienda}) => {
             setLength('');
             setHeigth('');
             setDeepth('');
+            setWeight('');
             setSelectedProduct(null);
             alert("Producto actualizado correctamente");
         } catch (error) {
@@ -99,7 +104,8 @@ const ComponentProducts = ({productos: initialProductos, tienda}) => {
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Preparation time (min)</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Length</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Height</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Width</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Depth</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Weight</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                             </tr>
                         </thead>
@@ -118,6 +124,7 @@ const ComponentProducts = ({productos: initialProductos, tienda}) => {
                                     <td className="px-6 py-4">{product.length || ''}</td>
                                     <td className="px-6 py-4">{product.height || ''}</td>
                                     <td className="px-6 py-4">{product.depth || ''}</td>
+                                    <td className="px-6 py-4">{product.weight || ''}</td>
                                     <td className="px-6 py-4">
                                         <button
                                             onClick={() => handleEdit(product)}
@@ -170,7 +177,7 @@ const ComponentProducts = ({productos: initialProductos, tienda}) => {
                                             min="1"
                                             placeholder="Ingrese la Altura"
                                         />
-                                        <label>Width</label>
+                                        <label>Depth</label>
                                         <input
                                             type="number"
                                             value={deepth}
@@ -178,6 +185,15 @@ const ComponentProducts = ({productos: initialProductos, tienda}) => {
                                             className="w-full border border-gray-300 rounded px-3 py-2 mb-4"
                                             min="1"
                                             placeholder="Ingrese el Ancho"
+                                        />
+                                        <label>Weight</label>
+                                        <input
+                                            type="number"
+                                            value={weight}
+                                            onChange={(e) => setWeight(e.target.value)}
+                                            className="w-full border border-gray-300 rounded px-3 py-2 mb-4"
+                                            min="1"
+                                            placeholder="Ingrese el peso"
                                         />
                                     </div>
                                     <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
