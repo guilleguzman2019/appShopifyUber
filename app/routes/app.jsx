@@ -6,10 +6,6 @@ import polarisStyles from "@shopify/polaris/build/esm/styles.css?url";
 import { authenticate } from "../shopify.server";
 
 
-import {getUberToken} from '../functions/getDeliveryQuote'
-
-import {getUberQuote} from '../functions/getDeliveryQuote'
-
 export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
 
 
@@ -73,7 +69,28 @@ export const loader = async ({ request }) => {
 
   */
 
-  return {apiKey: process.env.SHOPIFY_API_KEY || ""};
+  const response = await admin.graphql(
+    `
+      query getProductInfo {
+        products(first: 1) {
+          nodes {
+            title
+            id
+          }
+        }
+      }
+    `
+  );
+
+  // Extraer los datos de la respuesta JSON
+  const data = await response.json();
+
+  const products = data.data.products.nodes.map(product => ({
+    title: product.title,
+    id: product.id
+  }));
+
+  return {productos:products , apiKey: process.env.SHOPIFY_API_KEY || ""};
 
 };
 
@@ -83,17 +100,20 @@ export default function App() {
 
   console.log(apiKey);
 
+
   return (
 
-    <AppProvider isEmbeddedApp apiKey={apiKey}>
-      <NavMenu>
-        <Link to="/app" rel="home">
-          Home
-        </Link>
-        <Link to="/app/additional">Ajustes Uber Direct</Link>
-      </NavMenu>
-      <Outlet />
-    </AppProvider>
+    
+      <AppProvider isEmbeddedApp apiKey={apiKey}>
+        <NavMenu>
+          <Link to="/app" rel="home">
+            Home
+          </Link>
+          <Link to="/app/additional">Settings Uber Direct</Link>
+          <Link to="/app/pricing">Price Uber direct</Link>
+        </NavMenu>
+        <Outlet />
+      </AppProvider>
   );
 }
 

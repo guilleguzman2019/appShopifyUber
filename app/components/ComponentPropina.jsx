@@ -1,19 +1,19 @@
 import React, { useState, useEffect } from 'react';
 
-const ComponentPropina = ({tienda}) => {
+const ComponentPropina = ({ tienda }) => {
   const [selectedOption, setSelectedOption] = useState('');
   const [inputValue, setInputValue] = useState('');
   const [isTipEnabled, setIsTipEnabled] = useState(false);
 
   // Asegurarse de que los valores de 'tienda.propina' se configuren correctamente
   useEffect(() => {
-    if (tienda.propina) {
+    if (tienda && tienda.propina) {
       // Establecer valores si propina tiene valores
       setSelectedOption(tienda.propina.tipo || '');
       setInputValue(tienda.propina.valor || '');
       setIsTipEnabled(tienda.propina.habilitada || false);
     }
-  }, [tienda.propina]);
+  }, [tienda]); // Depender solo de 'tienda'
 
   const handleOptionChange = (value) => {
     setSelectedOption(value);

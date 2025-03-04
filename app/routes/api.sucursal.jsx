@@ -1,5 +1,7 @@
 import { json } from "@remix-run/node";
 
+import prisma from '../db.server';
+
 
 export let action = async ({ request }) => {
   // Obtener los datos del cuerpo de la solicitud

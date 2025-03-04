@@ -31,7 +31,8 @@ const ComponentPickupDrop = ({ tienda }) => {
   console.log(tienda);
 
   useEffect(() => {
-    if (tienda.ajustesPickupDrop) {
+    // Verifica si 'tienda' y 'tienda.ajustesPickupDrop' están definidos
+    if (tienda && tienda.ajustesPickupDrop) {
       setPickupSteps({
         firma: tienda.ajustesPickupDrop.firmaPickup || false,
         nombreFirma: tienda.ajustesPickupDrop.nombreFirmaPickup || false,
@@ -49,8 +50,6 @@ const ComponentPickupDrop = ({ tienda }) => {
       });
     }
   }, [tienda]);
-
-
 
   // Manejar el cambio de los checkboxes
   const handleCheckboxChange = (section, name) => {
@@ -84,7 +83,6 @@ const ComponentPickupDrop = ({ tienda }) => {
 
   // Guardar los datos
   const handleSave = async () => {
-    
     const data = {
       tiendaId: tienda.id,
       pickup: pickupSteps,

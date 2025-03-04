@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-import { LoadScript } from '@react-google-maps/api';
+import prisma from '../db.server';
 
 import { json } from "@remix-run/node";
 
@@ -116,6 +116,8 @@ export const loader = async ({ request }) => {
         store = await tx.tienda.create({
           data: {
             nombre: session.shop,
+            plan: 'free',
+            CantidadEnvios: 0,
             ajustes: {
               create: {
                 apiKey: "",
@@ -229,7 +231,7 @@ export const action = async ({ request }) => {
 
 const AdditionalPage = () => {
 
-  const { tienda, productos, ordenes, error,} = useLoaderData();
+  const { tienda, productos, ordenes, error} = useLoaderData();
   const [pestanaActiva, setPestanaActiva] = useState('Settings');
 
   console.log(error);
@@ -253,7 +255,8 @@ const AdditionalPage = () => {
 
 
   return (
-    <LoadScript googleMapsApiKey="AIzaSyDGa5xQES7MMhkvcpIA5Y85QzlVEqL1sJg" libraries={['places']}>
+
+    <div>
       <div className="min-h-screen bg-gray-50" style={{ fontFamily: "Montserrat, serif" }}>
       <header className="border-b bg-white flex justify-between">
         <nav className="px-4">
@@ -320,7 +323,7 @@ const AdditionalPage = () => {
         </div>
       </main>
       </div>
-    </LoadScript>
+    </div>
   );
 };
 

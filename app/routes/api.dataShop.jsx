@@ -1,5 +1,7 @@
 import { json } from "@remix-run/node";
 
+import prisma from '../db.server';
+
 export const loader = async () => {
   //const users = await prisma.user.findMany();
   return {hola: 'hola mundo'};

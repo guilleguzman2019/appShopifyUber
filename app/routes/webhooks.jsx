@@ -11,6 +11,8 @@ import {sucursalMasCercana} from '../functions/getDeliveryQuote'
 
 import nodemailer from 'nodemailer';
 
+import prisma from '../db.server';
+
 import { getAccessToken } from 'uber-direct/auth';
 
 import { createDeliveriesClient } from 'uber-direct/deliveries';
@@ -73,7 +75,7 @@ const paidOrders = async (payload, admin) => {
 
     const {idTienda , IndicacionesDropoff , diaHorariofinal, propina , tiempoPreparacion } = dataFormated(datos);
 
-    const {apiKey, secretKey, customer, user , pass} = await getAjustesTienda(idTienda);
+    const {apiKey, secretKey, customer, user , pass, plan, CantidadEnvios} = await getAjustesTienda(idTienda);
 
     // Sobrescribe las variables de entorno programáticamente
     process.env.UBER_DIRECT_CLIENT_ID = apiKey;
@@ -179,6 +181,11 @@ const paidOrders = async (payload, admin) => {
 
     if(tipoEnvio == 'UBER_DIRECT'){
 
+      if(plan == 'free'  &&  CantidadEnvios > 5){
+
+        return ;
+      }
+
       const delivery = await deliveriesClient.createDelivery(deliveryRequest);
 
       const urlTraking = getUrlTracking(delivery);
@@ -190,40 +197,69 @@ const paidOrders = async (payload, admin) => {
       await envioEmail({user,pass},email, delivery);
 
       const responsefinal = await admin.graphql(
-        `#graphql
-        mutation MetafieldsSet($metafields: [MetafieldsSetInput!]!) {
-          metafieldsSet(metafields: $metafields) {
-            metafields {
-              key
-              namespace
-              value
-              createdAt
-              updatedAt
-            }
-            userErrors {
-              field
-              message
-              code
-            }
-          }
-        }`,
-        {
-          variables: {
-            metafields: [
-              {
-                key: "urlTracking",
-                namespace: "example_namespace",
-                ownerId: `gid://shopify/Order/${orderId}`,
-                type: "single_line_text_field",
-                value: urlTraking
+          `#graphql
+          mutation MetafieldsSet($metafields: [MetafieldsSetInput!]!) {
+            metafieldsSet(metafields: $metafields) {
+              metafields {
+                key
+                namespace
+                value
+                createdAt
+                updatedAt
               }
-            ]
-          },
-        }
+              userErrors {
+                field
+                message
+                code
+              }
+            }
+          }`,
+          {
+            variables: {
+              metafields: [
+                {
+                  key: "urlTracking",
+                  namespace: "example_namespace",
+                  ownerId: `gid://shopify/Order/${orderId}`,
+                  type: "single_line_text_field",
+                  value: urlTraking
+                }
+              ]
+            },
+          }
       );
-    
+      
       const datafinal = await responsefinal.json();
       console.log('Metafields update response:', datafinal);
+
+      if(plan == 'free'  &&  CantidadEnvios < 5){
+
+        const tienda = await prisma.tienda.findUnique({
+          where: {
+            id: idTienda, // Aquí se está usando el ID de la tienda como identificador
+          },
+          select: {
+            CantidadEnvios: true, // Solo seleccionamos el campo que necesitamos
+          },
+        });
+        
+        if (tienda) {
+          const actualizado = await prisma.tienda.update({
+            where: {
+              id: idTienda, // Aquí se está usando el ID de la tienda como identificador
+            },
+            data: {
+              CantidadEnvios: tienda.CantidadEnvios + 1, // Aumentamos en uno la cantidad
+            },
+          });
+        
+          console.log('CantidadEnvios actualizada:', actualizado);
+        }
+
+        
+      }
+
+      
 
     }
 
@@ -275,14 +311,16 @@ const getAjustesTienda = async (id) => {
   });
 
   if (!store || !store.ajustes) {
-    return { apiKey: '', secretKey: '', customer: '' }; // Retorna valores vacíos si no hay datos
+    return { apiKey: '', secretKey: '', customer: '', plan: '', CantidadEnvios: 0 }; // Retorna valores vacíos si no hay datos
   }
 
   const { apiKey = '', secretKey = '', customer = '' } = store.ajustes;
 
+  const { plan = '', CantidadEnvios = 0 } = store;
+
   const {user , pass} = store.ajustesEmail ;
 
-  return { apiKey, secretKey, customer, user, pass };
+  return { apiKey, secretKey, customer, user, pass, plan, CantidadEnvios };
 };
 
 const getSucursales = async (id) =>{

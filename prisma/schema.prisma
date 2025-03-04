@@ -32,15 +32,17 @@ model Session {
 }
 
 model Tienda {
-  id        Int        @id @default(autoincrement())
-  nombre    String     @unique
-  ajustes   Ajustes?
-  ajustesEmail    AjustesEmail?
-  sucursales Sucursal[] 
-  productos Producto[]
-  horarios  String?
-  sucursalPrincipalId String? // Nueva referencia a la sucursal principal
-  propina   Propina?
+  id                    Int        @id @default(autoincrement())
+  nombre                String     @unique
+  ajustes               Ajustes?
+  ajustesEmail          AjustesEmail?
+  sucursales            Sucursal[] 
+  productos             Producto[]
+  horarios              String?
+  sucursalPrincipalId   String? // Nueva referencia a la sucursal principal
+  propina               Propina?
+  plan                  String
+  CantidadEnvios        Int
   ajustesPickupDrop     AjustesPickupDrop?
   ajustesProductos      AjustesProducto?
 }

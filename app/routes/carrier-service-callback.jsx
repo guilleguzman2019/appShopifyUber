@@ -12,6 +12,8 @@ import {obtenerCoordenadasDeDireccion} from '../functions/getDeliveryQuote'
 
 import {getOrigenPickup} from '../functions/getDeliveryQuote'
 
+import prisma from '../db.server';
+
 export async function action({ request }) {
 
   try {

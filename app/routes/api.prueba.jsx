@@ -1,5 +1,7 @@
 import { json } from "@remix-run/node";
 
+import prisma from '../db.server';
+
 import { getAccessToken } from 'uber-direct/auth';
 import { createDeliveriesClient } from 'uber-direct/deliveries';
 
@@ -21,19 +23,27 @@ export const action = async ({ request }) => {
 };
 
 export async function loader() {
+  try {
+    const verificacion = await prisma.ajustesPickupDrop.findMany({
+      where: {
+        tiendaId: 7,
+      }
+    });
 
-  
-
-  const verificacion = await prisma.ajustesPickupDrop.findMany({
-    where: {
-      tiendaId: 7,
+    if (verificacion.length === 0) {
+      throw new Error('No se encontraron registros para la tiendaId proporcionada.');
     }
-  });
 
-  const {pickup_verification, dropoff_verification} = transformVerificationData(verificacion[0]);
+    const { pickup_verification, dropoff_verification } = transformVerificationData(verificacion[0]);
 
-  return dropoff_verification ;
+    return dropoff_verification;
+
+  } catch (error) {
+    console.error('Error en la consulta o transformación:', error);
+    return { error: error.message }; // Devuelve el mensaje de error
+  }
 }
+
 
 
 async function getUberQuote(token, origin, destination) {

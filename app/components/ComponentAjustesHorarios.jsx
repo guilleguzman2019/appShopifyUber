@@ -1,8 +1,15 @@
 import { useState, useEffect, useMemo } from "react";
 
 const HorariosForm = ({ tienda }) => {
-
-  const horariosdb = useMemo(() => JSON.parse(tienda.horarios), [tienda.horarios]);
+  // Asegúrate de que tienda.horarios sea un string válido
+  const horariosdb = useMemo(() => {
+    try {
+      return tienda && tienda.horarios ? JSON.parse(tienda.horarios) : [];
+    } catch (error) {
+      console.error("Error al parsear los horarios:", error);
+      return []; // En caso de error, devolvemos un array vacío
+    }
+  }, [tienda && tienda.horarios]);
 
   // Estado inicial de los horarios, priorizando los horarios que vienen de la base de datos
   const [horarios, setHorarios] = useState(
