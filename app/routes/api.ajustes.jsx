@@ -102,7 +102,7 @@ export const action = async ({ request }) => {
         carrier_service: {
           id:idCarrier,
           active: habilitado,
-          callback_url: 'https://sealed-briefing-lasting-stations.trycloudflare.com/carrier-service-callback'
+          callback_url: 'https://lens-jones-gotta-attacked.trycloudflare.com/app/carrier-service-callback'
         }
       };
 

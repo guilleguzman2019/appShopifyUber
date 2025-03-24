@@ -1,8 +1,12 @@
 import { getAccessToken } from 'uber-direct/auth';
 import { createDeliveriesClient } from 'uber-direct/deliveries';
 
+import { appendFile } from 'fs/promises';
+import { mkdir } from 'fs/promises';
+import { dirname } from 'path';
 
-export async function getUberToken(ajustes) {
+
+export async function getUberToken(ajustes, nombre) {
 
   const apiKey = ajustes ? ajustes.apiKey : null;
 
@@ -22,13 +26,17 @@ export async function getUberToken(ajustes) {
   return token ;
 
   } catch (error) {
-    console.error('Error en getUberToken:', error);
+    const message = error.message;
+    console.error(message);
+    const jsonPart = message.substring(message.indexOf('{'));
+    const errorObject = JSON.parse(jsonPart);
+    await logErrorToFile(`Error retrieving the token in Uber Direct: ${errorObject.error_description} `, nombre);
     throw error;
   }
 
 }
 
-export async function getUberQuote(ajustes ,token, origin, destino) {
+export async function getUberQuote(ajustes ,token, origin, destino, nombre) {
 
   const apiKey = ajustes ? ajustes.apiKey : null;
 
@@ -41,15 +49,10 @@ export async function getUberQuote(ajustes ,token, origin, destino) {
   process.env.UBER_DIRECT_CLIENT_SECRET = secretKey;
   process.env.UBER_DIRECT_CUSTOMER_ID = customer;
 
-  const latOrigin = origin.latitud ;
-  const logOrigin = origin.longitud;
 
-  const direccionPickup = await getAddressGoogle(latOrigin, logOrigin);
+  const direccionPickup = origin.direccion;
 
-
-  const direccionDropoff = destino.latitude && destino.longitude 
-      ? getAddressGoogle(destino.latitude, destino.longitude) 
-      : await getAddressGoogle2(destino , getCountryName(destino.country));
+  const direccionDropoff = destino.address ;
 
 
   try {
@@ -68,128 +71,61 @@ export async function getUberQuote(ajustes ,token, origin, destino) {
     return estimate ;
     
   } catch (error) {
-    console.error('Error en getUberQuote:', error);
-    return error ;
+    console.error('Error in the Uber estimate :', error);
+    const message = error.message;
+    await logErrorToFile(`Error in the Uber estimate : ${message} `, nombre);
+    console.error(message);
     throw error;
   }
+
 }
 
-export async function getAddressGoogle(lat, lng){
+export async function createDelivery(ajustes, token, nombre, deliveryRequest) {
 
+  const apiKey = ajustes ? ajustes.apiKey : null;
+  const secretKey = ajustes ? ajustes.secretKey : null;
+  const customer = ajustes ? ajustes.customer : null;
 
-  if (!lat || !lng) {
-    return json({ error: "Latitud y Longitud son requeridas." }, { status: 400 });
-  }
+  // Sobrescribe las variables de entorno programáticamente
+  process.env.UBER_DIRECT_CLIENT_ID = apiKey;
+  process.env.UBER_DIRECT_CLIENT_SECRET = secretKey;
+  process.env.UBER_DIRECT_CUSTOMER_ID = customer;
 
   try {
-    const response = await fetch(
-      `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=AIzaSyDGa5xQES7MMhkvcpIA5Y85QzlVEqL1sJg`
-    );
-
-    const data = await response.json();
-
-    if (data.status === "OK") {
-      const address = data.results[0].formatted_address;
-      return address;
-    } else {
-      return json({ error: "No se pudo encontrar la dirección." }, { status: 400 });
-    }
+    const deliveriesClient = createDeliveriesClient(token);
+    const delivery = await deliveriesClient.createDelivery(deliveryRequest);
+    return delivery;
   } catch (error) {
-    return json({ error: "Error al comunicarse con la API de Google." }, { status: 500 });
-  }
+    // Verificamos si el error tiene metadata
 
+    if (error.metadata) {
+      // Iteramos sobre las claves de metadata y extraemos el valor
+      let errorMessage = 'Error desconocido';
 
-}
+      // Iteramos sobre cada clave en metadata y tomamos su valor
+      for (let key in error.metadata) {
+        if (error.metadata.hasOwnProperty(key)) {
+          errorMessage = error.metadata[key];
+          break; // Si quieres tomar solo el primer mensaje encontrado
+        }
+      }
 
-//get formate address
+      // Mostrar el mensaje de error específico
+      console.error(`Error in the Uber delivery : ${errorMessage}`);
+      const message = error.message;
 
-export async function getAddressGoogle2(destination, pais){
+      await logErrorToFile(`Error in the Uber delivery : ${message} - ${errorMessage}`, nombre);
 
-  var direccionfinal = `${destination.address1}, ${destination.city}, ${destination.postal_code}, ${pais}`;
-
-  if (!direccionfinal) {
-    throw new Error("La dirección parcial es requerida.");
-  }
-
-  try {
-    const response = await fetch(
-      `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(direccionfinal)}&key=AIzaSyDGa5xQES7MMhkvcpIA5Y85QzlVEqL1sJg`
-    );
-
-    const data = await response.json();
-
-    if (data.status === "OK") {
-      const address = data.results[0].formatted_address;
-      return address;  // Devuelve la dirección completa encontrada
+      console.error(message);
+      throw error; // Volver a lanzar el error después de loguearlo
     } else {
-      throw new Error("No se pudo encontrar la dirección.");
+      // Si el error no tiene metadata, manejarlo como un error genérico
+      console.error('Error in the Uber delivery :', error.message);
+      throw error;
     }
-  } catch (error) {
-    throw new Error("Error al comunicarse con la API de Google.");
   }
 }
 
-export function getCountryName(code) {
-
-  const paisesLatinoamericanos = [
-    { codigo: 'MX', nombre: 'México' },
-    { codigo: 'AR', nombre: 'Argentina' },
-    { codigo: 'BR', nombre: 'Brasil' },
-    { codigo: 'CL', nombre: 'Chile' },
-    { codigo: 'CO', nombre: 'Colombia' },
-    { codigo: 'PE', nombre: 'Perú' },
-    { codigo: 'VE', nombre: 'Venezuela' },
-    { codigo: 'UY', nombre: 'Uruguay' },
-    { codigo: 'PY', nombre: 'Paraguay' },
-    { codigo: 'BO', nombre: 'Bolivia' },
-    { codigo: 'EC', nombre: 'Ecuador' },
-    { codigo: 'SV', nombre: 'El Salvador' },
-    { codigo: 'CR', nombre: 'Costa Rica' },
-    { codigo: 'HN', nombre: 'Honduras' },
-    { codigo: 'GT', nombre: 'Guatemala' },
-    { codigo: 'NI', nombre: 'Nicaragua' },
-    { codigo: 'DO', nombre: 'República Dominicana' },
-    { codigo: 'CU', nombre: 'Cuba' },
-    { codigo: 'JM', nombre: 'Jamaica' },
-    { codigo: 'HT', nombre: 'Haití' },
-    { codigo: 'BS', nombre: 'Bahamas' },
-    { codigo: 'BB', nombre: 'Barbados' },
-    { codigo: 'BZ', nombre: 'Belice' },
-    { codigo: 'GD', nombre: 'Granada' },
-    { codigo: 'LC', nombre: 'Santa Lucía' },
-    { codigo: 'KN', nombre: 'San Cristóbal y Nieves' },
-    { codigo: 'VC', nombre: 'San Vicente y las Granadinas' }
-  ];
-
-  const pais = paisesLatinoamericanos.find(p => p.codigo === code);
-  return pais ? pais.nombre : 'País no encontrado';
-
-}
-
-export async function obtenerCoordenadasDeDireccion(direccion) {
-
-  const apiKey = 'AIzaSyDGa5xQES7MMhkvcpIA5Y85QzlVEqL1sJg';  // Usa tu clave API de Google Maps
-  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(direccion)}&key=${apiKey}`;
-
-  try {
-    const response = await fetch(url);  // Esperamos a que fetch se resuelva
-    const data = await response.json();  // Esperamos a que la respuesta sea convertida en JSON
-
-    if (data.status === 'OK') {
-      const latitud = data.results[0].geometry.location.lat;
-      const longitud = data.results[0].geometry.location.lng;
-
-      // Retornar las coordenadas como un objeto
-      return { latitude:latitud, longitude:longitud };
-    } else {
-      console.error('No se pudo obtener las coordenadas:', data.status);
-      return null;  // Retorna null si no se pudo obtener las coordenadas
-    }
-  } catch (error) {
-    console.error('Error al realizar la solicitud:', error);
-    return null;  // Retorna null en caso de error
-  }
-}
 
 export function calcularDistancia(lat1, lon1, lat2, lon2) {
   const radioTierra = 6371; // Radio de la Tierra en km
@@ -207,15 +143,8 @@ export function calcularDistancia(lat1, lon1, lat2, lon2) {
 }
 
 // Función para encontrar la sucursal más cercana
-export async function sucursalMasCercana(idTienda, destino) {
+export async function sucursalMasCercana(idTienda, sucursales, destino) {
 
-
-  // sucursales de la tienda
-    let sucursales = await prisma.sucursal.findMany({
-      where: {
-        tiendaId: idTienda,
-      }
-    });
 
     let sucursalCercana = null;
     let distanciaMinima = Infinity;
@@ -235,12 +164,29 @@ export async function sucursalMasCercana(idTienda, destino) {
     return sucursalCercana;
 }
 
+export async function getOrigenPickup(id, sucursales, destino) {
 
-export async function getOrigenPickup(id, destino) {
-  
-  const destinoLatLog = destino.latitude && destino.longitude 
-      ? { latitude: destino.latitude, longitude: destino.longitude }
-      : await obtenerCoordenadasDeDireccion(`${destino.address1}, ${destino.city}, ${destino.postal_code}, ${getCountryName(destino.country)}`);
+  const destinoLatLog = {latitude: destino.latitude , longitude: destino.longitude} ;
 
-  return await sucursalMasCercana(id, destinoLatLog);
+  return await sucursalMasCercana(id, sucursales, destinoLatLog);
+}
+
+async function logErrorToFile(errorMessage, nombre) {
+
+  const logFilePath = `logs/logs-${nombre}.txt`;
+  const timestamp = new Date(new Date().getTime() - (6 * 60 * 60 * 1000)).toISOString();
+  const logMessage = `[${timestamp}] [name shop: ${nombre}] ${errorMessage}\n`;
+
+  console.log('Writing error to log:', logMessage);
+
+  try {
+    // Asegurar que el directorio existe
+    await mkdir(dirname(logFilePath), { recursive: true });
+    
+    // Escribir en el archivo
+    await appendFile(logFilePath, logMessage);
+    console.log('Error successfully written to log file.');
+  } catch (err) {
+    console.error('Error writing to log file:', err);
+  }
 }

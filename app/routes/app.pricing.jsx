@@ -9,11 +9,13 @@ import { authenticate, MONTHLY_PLAN, ANNUAL_PLAN } from "../shopify.server";
 import prisma from '../db.server';
 
 export async function loader({ request }) {
+
   const { billing, session } = await authenticate.admin(request);
 
   let { shop } = session;
 
   try {
+
     const billingCheck = await billing.require({
       plans: [MONTHLY_PLAN, ANNUAL_PLAN],
       isTest: true,
@@ -25,6 +27,7 @@ export async function loader({ request }) {
     console.log(billingCheck);
 
     const subscription = billingCheck.appSubscriptions[0];
+
     console.log(`Shop is on ${subscription.name} (id ${subscription.id})`);
 
     const actualizado = await prisma.tienda.update({
@@ -40,6 +43,7 @@ export async function loader({ request }) {
 
     return json({ billing, plan: subscription });
   } catch (error) {
+    
     if (error.message === "No active plan") {
       console.log("Shop does not have any active plans.");
 
@@ -48,11 +52,11 @@ export async function loader({ request }) {
           nombre: shop, // Aquí se está usando el nombre de la tienda como identificador
         },
         data: {
-          plan: 'Free', // El nuevo valor para el campo 'plan'
+          plan: 'free', // El nuevo valor para el campo 'plan'
         },
       });
 
-      return json({ billing, plan: { name: "Free" } });
+      return json({ billing, plan: { name: "free" } });
     }
     throw error;
   }
@@ -60,13 +64,13 @@ export async function loader({ request }) {
 
 const planData = [
   {
-    title: "Free",
+    title: "free",
     description: "Free plan with basic features",
     price: "0",
     action: "Upgrade to free",
-    name: "Free",
+    name: "free",
     url: "/app/upgrade?plan=MONTHLY_PLAN",
-    features: ["5 shipping per month", "5 Products"],
+    features: ["5 shipping per month"],
   },
   {
     title: "Pro Monthly",
@@ -99,9 +103,10 @@ const planData = [
 ];
 
 export default function PricingPage() {
-  const { billing, plan } = useLoaderData();
 
-  console.log(billing);
+  const { plan } = useLoaderData();
+
+  console.log(plan);
 
   return (
     <div className="min-h-screen flex flex-col items-center bg-gray-100 p-10" style={{ fontFamily: "Montserrat, serif" }}>
@@ -113,6 +118,7 @@ export default function PricingPage() {
             : "You're currently on the Free plan. Upgrade to unlock more features."}
         </p>
       </div>
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8 w-full max-w-5xl">
         {planData.map((planItem, index) => (
           <div key={index} className="bg-white shadow-lg rounded-lg p-6 flex flex-col items-center">
@@ -131,7 +137,7 @@ export default function PricingPage() {
             ) : (
               <div className="">
                 <p className="mt-4 text-gray-500 mb-3">You're currently on this plan</p>
-                {planItem.name != 'Free' ? (
+                {planItem.name != 'free' ? (
                   <Button tone="critical" primary url={planItem.urlCancel}>
                     {planItem.actionCancel}
                   </Button>):('')}
@@ -140,6 +146,7 @@ export default function PricingPage() {
           </div>
         ))}
       </div>
+
     </div>
   );
 }

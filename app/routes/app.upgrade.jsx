@@ -2,9 +2,12 @@ import { redirect } from "@remix-run/node";
 import { authenticate, MONTHLY_PLAN, ANNUAL_PLAN } from "../shopify.server";
 
 export const loader = async ({ request }) => {
+
   const { billing, session } = await authenticate.admin(request);
   let { shop } = session;
   let myShop = shop.replace(".myshopify.com", "");
+
+  console.log(myShop);
 
   const selectedPlan = new URL(request.url).searchParams.get("plan");
   const selectedPlanFinal = selectedPlan === "ANNUAL_PLAN" ? ANNUAL_PLAN : MONTHLY_PLAN;

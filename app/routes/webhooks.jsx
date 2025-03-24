@@ -2,12 +2,9 @@ import { authenticate } from "../shopify.server";
 
 import {getUberToken} from '../functions/getDeliveryQuote'
 
-import {getCountryName} from '../functions/getDeliveryQuote'
+import {createDelivery} from '../functions/getDeliveryQuote'
 
-import {getAddressGoogle} from '../functions/getDeliveryQuote'
-import {getAddressGoogle2} from '../functions/getDeliveryQuote'
-
-import {sucursalMasCercana} from '../functions/getDeliveryQuote'
+import {getOrigenPickup} from '../functions/getDeliveryQuote'
 
 import nodemailer from 'nodemailer';
 
@@ -16,6 +13,10 @@ import prisma from '../db.server';
 import { getAccessToken } from 'uber-direct/auth';
 
 import { createDeliveriesClient } from 'uber-direct/deliveries';
+
+import { appendFile } from 'fs/promises';
+import { mkdir } from 'fs/promises';
+import { dirname } from 'path';
 
 const updateOrders = async (payload, admin) => {
 
@@ -65,6 +66,7 @@ const updateOrders = async (payload, admin) => {
   
 };
 
+
 const paidOrders = async (payload, admin) => {
 
   try {
@@ -73,32 +75,43 @@ const paidOrders = async (payload, admin) => {
 
     const datos = payload.line_items[0].properties; // propiedades que se van a usar en el uber direct
 
-    const {idTienda , IndicacionesDropoff , diaHorariofinal, propina , tiempoPreparacion } = dataFormated(datos);
+    const {idTienda , IndicacionesDropoff , diaHorariofinal, propina , tiempoPreparacion, tiempoEntrega } = dataFormated(datos);
 
-    const {apiKey, secretKey, customer, user , pass, plan, CantidadEnvios} = await getAjustesTienda(idTienda);
+    console.log(tiempoEntrega);
+
+    const {apiKey, secretKey, customer, user , pass, plan, CantidadEnvios, nombre} = await getAjustesTienda(idTienda);
 
     // Sobrescribe las variables de entorno programáticamente
     process.env.UBER_DIRECT_CLIENT_ID = apiKey;
     process.env.UBER_DIRECT_CLIENT_SECRET = secretKey;
     process.env.UBER_DIRECT_CUSTOMER_ID = customer;
 
-    const sucursales = await getSucursales(idTienda);
+
+    const sucursales = await getSucursales(idTienda, nombre);
+
+    console.log(sucursales);
 
     const destino = payload.shipping_address || {} ;
 
-    const { latitude, longitude } = getDestino(destino);
+    console.log(destino);
 
-    var sucursalfinal = await sucursalMasCercana(idTienda, { latitude, longitude });
+    const direccionCliente = (!destino.latitude) ? await validateAddressNoCoord(destino, nombre) : await validateAddressWithCoord(destino, nombre);
 
-    const { latitud,longitud } = sucursalfinal || {};
+    console.log(direccionCliente);
 
-    const direccionPickup = await getAddressGoogle(latitud, longitud);
+    const origin = await getOrigenPickup(idTienda, sucursales , direccionCliente);
 
-    const direccionDrop = await getAddressGoogle(latitude, longitude);
+    console.log(origin);
+
+    const { latitud, longitud } = origin || {};
+
+    const direccionPickup = origin.direccion;
+
+    const direccionDrop = direccionCliente.address;
 
     const uberToken = await getUberToken({apiKey, secretKey, customer});
 
-    const deliveriesClient = createDeliveriesClient(uberToken);
+    //const deliveriesClient = createDeliveriesClient(uberToken);
 
     const productosPayload = payload.line_items;
 
@@ -106,12 +119,10 @@ const paidOrders = async (payload, admin) => {
 
     const {pickup_verification, dropoff_verification} = await getVerificationData(idTienda);
 
-    const pickupReadyTime = "2025-02-22T23:00:00.000Z" ;
-
     const deliveryRequest = {
       pickup_name: 'Store Main',
       pickup_address: direccionPickup,
-      pickup_phone_number: sucursalfinal.telefono || '+14155551212',
+      pickup_phone_number: origin.telefono || '+14155551212',
       pickup_verification: {
           signature: true,
           signature_requirement: {
@@ -177,17 +188,32 @@ const paidOrders = async (payload, admin) => {
       },
     };
 
+    if (tiempoEntrega != 'ahora mismo') {
+      const dateArgentina = new Date(tiempoEntrega);
+    
+      // Convertir la fecha a UTC y a formato ISO 8601
+      const timestampUTC = dateArgentina.toISOString();
+    
+      // Asignar el valor de timestampUTC a la propiedad pickup_ready_dt
+      deliveryRequest.pickup_ready_dt = timestampUTC;
+    }
+
     const tipoEnvio = payload.shipping_lines[0].code;
+
+    console.log(plan);
 
     if(tipoEnvio == 'UBER_DIRECT'){
 
       if(plan == 'free'  &&  CantidadEnvios > 5){
 
+        const message = `You have a free plan, you can't make more than 5 requests. Upgrade to a higher plan.`;
+        await logErrorToFile(message, nombre);
+        console.error(message);
         return ;
       }
 
-      const delivery = await deliveriesClient.createDelivery(deliveryRequest);
-
+      const delivery = await createDelivery({apiKey, secretKey, customer}, uberToken, idTienda, deliveryRequest);
+      
       const urlTraking = getUrlTracking(delivery);
 
       const pincode = delivery.return.verification_requirements.pincode.value || '6789';
@@ -244,6 +270,7 @@ const paidOrders = async (payload, admin) => {
         });
         
         if (tienda) {
+
           const actualizado = await prisma.tienda.update({
             where: {
               id: idTienda, // Aquí se está usando el ID de la tienda como identificador
@@ -255,13 +282,9 @@ const paidOrders = async (payload, admin) => {
         
           console.log('CantidadEnvios actualizada:', actualizado);
         }
-
-        
       }
-
-      
-
     }
+    
 
   }
   catch (error) {
@@ -270,6 +293,7 @@ const paidOrders = async (payload, admin) => {
   }
 
 }
+
 
 const dataFormated = (datos) => {
 
@@ -284,54 +308,161 @@ const dataFormated = (datos) => {
     IndicacionesDropoff = '',
     diaHorariofinal = '',
     propina = '',
+    tiempoEntrega = '',
     tiempoPreparacion = ''
   } = datosTransformados || {}; 
 
-  return { idTienda, IndicacionesDropoff, diaHorariofinal, propina, tiempoPreparacion };
+  return { idTienda, IndicacionesDropoff, diaHorariofinal, propina, tiempoPreparacion, tiempoEntrega };
 };
 
-const getDestino = (destino) => {
-  if (!destino) return null; // Manejo de caso donde destino es undefined o null
-
-  const { latitude, longitude } = destino; // Extrae las propiedades correctamente
-
-  return { latitude, longitude }; // Devuelve el objeto correctamente
-};
 
 const getAjustesTienda = async (id) => {
+  try {
+    // Intentar obtener los datos de la tienda
+    let store = await prisma.tienda.findUnique({
+      where: {
+        id: id,
+      },
+      select: {  // Cambié 'include' por 'select'
+        nombre: true,  // Aseguramos que se obtiene el nombre
+        ajustes: true,  // Ajustes de la tienda
+        ajustesEmail: true,  // Ajustes de email
+        plan: true,  // Plan de la tienda
+        CantidadEnvios: true,  // Cantidad de envíos
+      },
+    });
 
-  let store = await prisma.tienda.findUnique({
-    where: {
-      id: id
-    },
-    include: {
-      ajustes: true,
-      ajustesEmail: true
+    // Verificar si no existe la tienda o no tiene ajustes
+    if (!store || !store.ajustes) {
+      const errorMessage = `Missing required store configurations for store ID: ${id}. apiKey, secretKey, and customer cannot be empty.`;
+      await logErrorToFile(errorMessage, 'not shop');
+      return { apiKey: '', secretKey: '', customer: '', plan: '', CantidadEnvios: 0, nombre: '' }; // Retorna valores vacíos si no hay datos
     }
-  });
 
-  if (!store || !store.ajustes) {
-    return { apiKey: '', secretKey: '', customer: '', plan: '', CantidadEnvios: 0 }; // Retorna valores vacíos si no hay datos
+    // Desestructuración segura de ajustes y ajustesEmail
+    const { apiKey = '', secretKey = '', customer = '' } = store.ajustes;
+    const { user = '', pass = '' } = store.ajustesEmail || {};  // Asegura que no falle si no existe ajustesEmail
+    const { nombre, plan = '', CantidadEnvios = 0 } = store;  // Desestructuración correcta de `store`
+
+    // Retorna la configuración de la tienda
+    return { apiKey, secretKey, customer, user, pass, plan, CantidadEnvios, nombre };
+
+  } catch (error) {
+    // Si ocurre un error, lo registramos en el log y retornamos valores por defecto
+    console.error('Error en getAjustesTienda:', error);
+    await logErrorToFile(`Error occurred while fetching store configurations for store ID: ${id}. Error: ${error.message}`, store?.nombre);
+    return { apiKey: '', secretKey: '', customer: '', plan: '', CantidadEnvios: 0, nombre: '' }; // Retorna valores vacíos en caso de error
   }
-
-  const { apiKey = '', secretKey = '', customer = '' } = store.ajustes;
-
-  const { plan = '', CantidadEnvios = 0 } = store;
-
-  const {user , pass} = store.ajustesEmail ;
-
-  return { apiKey, secretKey, customer, user, pass, plan, CantidadEnvios };
 };
 
-const getSucursales = async (id) =>{
 
-  const sucursales = await prisma.sucursal.findMany({
+async function getSucursales(idTienda, nombre) {
+
+  // Verificar si se pasó un idTienda válido
+  if (!idTienda) {
+    throw new Error('A valid shop ID (idTienda) is required.');
+  }
+
+  // Buscar sucursales de la tienda con el id proporcionado
+  let sucursales = await prisma.sucursal.findMany({
     where: {
-      tiendaId: id,
-    }
+      tiendaId: idTienda, // Asegúrate de que el campo 'tiendaId' está correctamente configurado en el modelo Prisma
+    },
   });
 
-  return sucursales ;
+  if (!sucursales || sucursales.length === 0) {
+    await logErrorToFile('Shops cannot be empty.', nombre);
+    throw new Error('No branches found for the provided shop.');
+  }
+
+  return sucursales; // Devuelve las sucursales encontradas
+}
+
+async function validateAddressNoCoord(location, nombre) {
+
+  const { address1, zip, city, province, country } = location;
+
+  // Verificar si todos los campos necesarios están presentes y no vacíos
+  if (!address1 || !zip || !city || !province || !country) {
+    await logErrorToFile('Address1, postal code, city, province, and country cannot be empty.', nombre);
+    throw new Error('All fields (address1, postal_code, city, province, country) must be provided and not empty.');
+  }
+
+  // Componer la dirección completa con los componentes
+  const address = `${address1}, ${zip}, ${city}, ${province}, ${country}`;
+
+  const apiKey = 'AIzaSyDGa5xQES7MMhkvcpIA5Y85QzlVEqL1sJg'; // Reemplaza esto con tu clave de API de Google Maps
+  const apiUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`;
+
+  try {
+    const response = await fetch(apiUrl);
+    const data = await response.json();
+
+    if (data.status === 'ZERO_RESULTS') {
+      await logErrorToFile('The location does not exist or could not be found.', nombre);
+      throw new Error('The location does not exist or could not be found.');
+    }
+
+    const results = data.results?.[0]; // Usa optional chaining para evitar errores si results es undefined
+
+    if (results && results.geometry?.location) {
+      const { lat, lng } = results.geometry.location;
+      return {
+        address: results.formatted_address,
+        latitude: lat,
+        longitude: lng,
+      };
+    }
+
+    // Si no hay resultados, devuelve un error o un valor predeterminado
+    throw new Error("No valid location data found.");
+    await logErrorToFile("No valid location data found.", nombre);
+
+  } catch (error) {
+    return 'Error: ' + error.message;
+  }
+}
+
+async function validateAddressWithCoord(location, nombre) {
+
+  const { latitude, longitude } = location;
+
+  if (!latitude || !longitude) {
+    await logErrorToFile('Latitude and longitude cannot be empty.', nombre);
+    throw new Error('Latitude and longitude cannot be empty.');
+  }
+
+  try {
+    const response = await fetch(
+      `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=AIzaSyDGa5xQES7MMhkvcpIA5Y85QzlVEqL1sJg`
+    );
+
+    const data = await response.json();
+
+    if (data.status === 'ZERO_RESULTS') {
+      await logErrorToFile('The location does not exist or could not be found.', nombre);
+      throw new Error('The location does not exist or could not be found.');
+    }
+
+    const results = data.results?.[0]; // Usa optional chaining para evitar errores si results es undefined
+
+    if (results && results.geometry?.location) {
+      const { lat, lng } = results.geometry.location;
+      return {
+        address: results.formatted_address,
+        latitude: lat,
+        longitude: lng,
+      };
+    }
+
+    // Si no hay resultados, devuelve un error o un valor predeterminado
+    await logErrorToFile("No valid location data found.", nombre);
+    throw new Error("No valid location data found.");
+
+  } catch (error) {
+    await logErrorToFile(`Error: ${error.message}`, nombre); // Registra el error en caso de excepción
+    return 'Error: ' + error.message;
+  }
 }
 
 const envioEmail = async (ajustes, email, delivery) => {
@@ -547,18 +678,41 @@ async function getVerificationData(id) {
   };
 }
 
+async function logErrorToFile(errorMessage, nombre) {
+
+  const logFilePath = `logs/logs-${nombre}.txt`;
+  const timestamp = new Date(new Date().getTime() - (6 * 60 * 60 * 1000)).toISOString();
+  const logMessage = `[${timestamp}] [name shop: ${nombre}] ${errorMessage}\n`;
+
+  console.log('Writing error to log:', logMessage);
+
+  try {
+    // Asegurar que el directorio existe
+    await mkdir(dirname(logFilePath), { recursive: true });
+    
+    // Escribir en el archivo
+    await appendFile(logFilePath, logMessage);
+    console.log('Error successfully written to log file.');
+  } catch (err) {
+    console.error('Error writing to log file:', err);
+  }
+}
+
 export const action = async ({ request }) => {
+
 
   //const { topic, shop, session, admin, payload } = await request.json();
  
 
   const { topic, shop, session, admin, payload } = await authenticate.webhook(request);
 
+  
   if (!admin) {
     // The admin context isn't returned if the webhook fired after a shop was uninstalled.
     console.log("No admin context", { topic, shop, session, payload });
     throw new Response();
   }
+
 
   switch (topic) {
     case "APP_UNINSTALLED":
@@ -578,7 +732,9 @@ export const action = async ({ request }) => {
     case "ORDERS_PAID":
       if (session) {
         
-        //console.log("Order paid", payload.line_items[0].properties);
+        console.log("Order paid", payload.line_items[0].properties);
+
+        console.log(payload);
 
         paidOrders(payload, admin);
         //paidOrders(payload);

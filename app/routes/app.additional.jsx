@@ -11,15 +11,17 @@ import ComponentAjustes from '../components/ComponentAjustes';
 import ComponentProducts from '../components/ComponentProducts';
 import ComponentPedidos from '../components/ComponentPedidos';
 import ComponentSucursales from '../components/ComponentSucursales';
+import ComponentLogs from '../components/ComponentLogs';
 
+import { promises as fs } from "fs";
+import path from "path";
 
 export const loader = async ({ request }) => {
-
   try {
-    // Authentication
+    // Autenticación
     const { admin, session } = await authenticate.admin(request);
-    
-    // GraphQL query execution with error handling
+
+    // Consulta GraphQL
     const response = await admin.graphql(`#graphql
       query getShopData {
         shop {
@@ -91,32 +93,30 @@ export const loader = async ({ request }) => {
         }
     }`);
 
-
     const { data } = await response.json();
-    
-    // Database operations with transaction
+
+    // Operaciones de base de datos
     const result = await prisma.$transaction(async (tx) => {
-      // Find or create store
+
       let store = await tx.tienda.findUnique({
-        where: {
-          nombre: session.shop
-        },
-        include: {
+        where: { nombre: session.shop },
+        select: {
+          id:true,
+          nombre: true,
           ajustes: true,
-          ajustesEmail:true,
-          sucursales:true,
+          ajustesEmail: true,
+          sucursales: true,
           propina: true,
-          ajustesPickupDrop:true,
-          ajustesProductos:true
-        }
+          ajustesPickupDrop: true,
+          ajustesProductos: true,
+        },
       });
-      
-      // If store doesn't exist, create it
+
       if (!store) {
         store = await tx.tienda.create({
           data: {
             nombre: session.shop,
-            plan: 'free',
+            plan: "free",
             CantidadEnvios: 0,
             ajustes: {
               create: {
@@ -125,91 +125,98 @@ export const loader = async ({ request }) => {
                 modo: "Pruebas",
                 titulo: "Uber Delivery final",
                 idioma: "es",
-                customer: ""
-              }
-            }
+                customer: "",
+              },
+            },
           },
-          include: {
+          select: {
+            id:true,
+            nombre: true,
             ajustes: true,
-            ajustesEmail:true,
-            sucursales:true,
-            propina:true,
-            ajustesPickupDrop:true,
-            ajustesProductos:true
-          }
+            ajustesEmail: true,
+            sucursales: true,
+            propina: true,
+            ajustesPickupDrop: true,
+            ajustesProductos: true,
+          },
         });
       }
-      
-      // Get existing products
+
+      // Obtener productos existentes
       const existingProducts = await tx.producto.findMany({
-        where: {
-          tiendaId: store.id, // Filtro para traer solo los productos con el tiendaId correspondiente
-        }
+        where: { tiendaId: store.id },
       });
-      const existingProductTitles = new Set(existingProducts.map(p => p.title));
-      
-      // Batch create new products
+      const existingProductTitles = new Set(existingProducts.map((p) => p.title));
+
+      // Crear productos nuevos si no existen
       const productsToCreate = data.products.edges
-        .filter(edge => !existingProductTitles.has(edge.node.title))
-        .map(edge => ({
+        .filter((edge) => !existingProductTitles.has(edge.node.title))
+        .map((edge) => ({
           title: edge.node.title,
           image: edge.node.images.edges[0]?.node.url || null,
           preparationTime: 1,
           length: 1,
           height: 1,
           depth: 1,
-          weight:1,
+          weight: 1,
           tiendaId: store.id,
         }));
-      
+
       if (productsToCreate.length > 0) {
-        await tx.producto.createMany({
-          data: productsToCreate
-        });
+        await tx.producto.createMany({ data: productsToCreate });
       }
-      
-      // Get final product list, filtered by tiendaId
+
+      // Obtener lista final de productos
       const finalProducts = await tx.producto.findMany({
-        where: {
-          tiendaId: store.id, // Filtro para traer solo los productos con el tiendaId correspondiente
-        }
+        where: { tiendaId: store.id },
       });
 
-      
-      // Always return the expected structure
+      // Manejo de logs sin caer en el catch
+      const filePath = path.join(process.cwd(), "logs", `logs-${store.nombre}.txt`);
+      let content = ""; // Contenido por defecto
+
+      try {
+        await fs.access(filePath);
+        content = await fs.readFile(filePath, "utf-8");
+      } catch (error) {
+        if (error.code === "ENOENT") {
+          await fs.writeFile(filePath, content, "utf-8");
+        } else {
+          throw error; // Solo lanzar si no es un error de archivo inexistente
+        }
+      }
+
       return {
         tienda: store,
         location: data.locations.edges,
         productos: finalProducts,
         ordenes: data.orders.edges,
-        error: null
+        logs: content,
+        error: null,
       };
-
     });
 
     return new Response(JSON.stringify(result), {
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { "Content-Type": "application/json" },
     });
-    
   } catch (error) {
-    console.error('Loader error:', error);
-    // Return the error response with the same structure
-    return new Response(JSON.stringify({
-      tienda: null,
-      location: [],
-      productos: [],
-      ordenes: [],
-      error: error.message
-    }), {
-      status: 500,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
+    console.error("Loader error:", error);
+    return new Response(
+      JSON.stringify({
+        tienda: null,
+        location: [],
+        productos: [],
+        ordenes: [],
+        error: error.message,
+      }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   }
 };
+
 
 
 export const action = async ({ request }) => {
@@ -231,10 +238,10 @@ export const action = async ({ request }) => {
 
 const AdditionalPage = () => {
 
-  const { tienda, productos, ordenes, error} = useLoaderData();
+  const { tienda, productos, ordenes, logs, error} = useLoaderData();
   const [pestanaActiva, setPestanaActiva] = useState('Settings');
 
-  console.log(error);
+  console.log(tienda);
 
 
   // Componentes de contenido por pestaña
@@ -250,6 +257,9 @@ const AdditionalPage = () => {
     ),
     Orders: (
       <ComponentPedidos tienda={tienda} ordenes={ordenes}/>
+    ),
+    Logs: (
+      <ComponentLogs tienda={tienda} logs={logs} />
     ),
   };
 
@@ -307,6 +317,18 @@ const AdditionalPage = () => {
                 }`}
               >
                 Orders
+              </button>
+            </li>
+            <li>
+              <button
+                onClick={() => setPestanaActiva('Logs')}
+                className={`py-3 ${
+                  pestanaActiva === 'Logs'
+                    ? 'text-indigo-700 border-b-2 border-indigo-700'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Logs
               </button>
             </li>
           </ul>
