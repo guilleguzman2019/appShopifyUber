@@ -102,7 +102,11 @@ export const action = async ({ request }) => {
         carrier_service: {
           id:idCarrier,
           active: habilitado,
+<<<<<<< HEAD
           callback_url: 'https://lens-jones-gotta-attacked.trycloudflare.com/app/carrier-service-callback'
+=======
+          callback_url: 'https://uber-direct-app-shop.vexecommerce.com/carrier-service-callback'
+>>>>>>> d5332d261a42fbcec8776fc8b9ed5531fc0b3e97
         }
       };
 
