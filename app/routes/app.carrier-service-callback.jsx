@@ -1,17 +1,5 @@
 import { json } from "@remix-run/node";
 
-import {getUberToken} from '../functions/getDeliveryQuote'
-
-import {getUberQuote} from '../functions/getDeliveryQuote'
-
-import {getCountryName} from '../functions/getDeliveryQuote'
-
-import {sucursalMasCercana} from '../functions/getDeliveryQuote'
-
-import {obtenerCoordenadasDeDireccion} from '../functions/getDeliveryQuote'
-
-import {getOrigenPickup} from '../functions/getDeliveryQuote'
-
 import prisma from '../db.server';
 
 import { unauthenticated } from "../shopify.server";
@@ -123,6 +111,36 @@ async function obtenerAjustesDeTienda(idTienda) {
   }
 }
 
+export async function getUberToken(ajustes, nombre) {
+
+  const apiKey = ajustes ? ajustes.apiKey : null;
+
+  const secretKey = ajustes ? ajustes.secretKey : null;
+
+  const customer = ajustes ? ajustes.customer : null;
+
+  // Sobrescribe las variables de entorno programáticamente
+  process.env.UBER_DIRECT_CLIENT_ID = apiKey;
+  process.env.UBER_DIRECT_CLIENT_SECRET = secretKey;
+  process.env.UBER_DIRECT_CUSTOMER_ID = customer;
+
+  try {
+
+  const token = await getAccessToken();
+
+  return token ;
+
+  } catch (error) {
+    const message = error.message;
+    console.error(message);
+    const jsonPart = message.substring(message.indexOf('{'));
+    const errorObject = JSON.parse(jsonPart);
+    await logErrorToFile(`Error retrieving the token in Uber Direct: ${errorObject.error_description} `, nombre);
+    throw error;
+  }
+
+}
+
 
 async function validateAddressNoCoord(location, nombre) {
 
@@ -232,6 +250,95 @@ async function getSucursales(idTienda, nombre) {
 
   return sucursales; // Devuelve las sucursales encontradas
 }
+
+export async function getOrigenPickup(id, sucursales, destino) {
+
+  const destinoLatLog = {latitude: destino.latitude , longitude: destino.longitude} ;
+
+  return await sucursalMasCercana(id, sucursales, destinoLatLog);
+}
+
+// Función para encontrar la sucursal más cercana
+export async function sucursalMasCercana(idTienda, sucursales, destino) {
+
+
+  let sucursalCercana = null;
+  let distanciaMinima = Infinity;
+
+// Iteramos sobre todas las sucursales
+  sucursales.forEach(sucursal => {
+    const { latitud, longitud } = sucursal;
+    const distancia = calcularDistancia(destino.latitude, destino.longitude, latitud, longitud);
+
+    // Comprobamos si esta sucursal está más cerca que la anterior
+    if (distancia < distanciaMinima) {
+      distanciaMinima = distancia;
+      sucursalCercana = sucursal;
+    }
+  });
+
+  return sucursalCercana;
+}
+
+export function calcularDistancia(lat1, lon1, lat2, lon2) {
+  const radioTierra = 6371; // Radio de la Tierra en km
+  const dLat = (lat2 - lat1) * (Math.PI / 180); // Diferencia de latitudes en radianes
+  const dLon = (lon2 - lon1) * (Math.PI / 180); // Diferencia de longitudes en radianes
+  
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const distancia = radioTierra * c; // Distancia en km
+  return distancia;
+}
+
+export async function getUberQuote(ajustes ,token, origin, destino, nombre) {
+
+  const apiKey = ajustes ? ajustes.apiKey : null;
+
+  const secretKey = ajustes ? ajustes.secretKey : null;
+
+  const customer = ajustes ? ajustes.customer : null;
+
+  // Sobrescribe las variables de entorno programáticamente
+  process.env.UBER_DIRECT_CLIENT_ID = apiKey;
+  process.env.UBER_DIRECT_CLIENT_SECRET = secretKey;
+  process.env.UBER_DIRECT_CUSTOMER_ID = customer;
+
+
+  const direccionPickup = origin.direccion;
+
+  const direccionDropoff = destino.address ;
+
+
+  try {
+
+    const deliveriesClient = createDeliveriesClient(token);
+        
+    const estimateRequest = {
+      pickup_address: direccionPickup,
+      dropoff_address: direccionDropoff,
+    };
+
+    //return estimateRequest;
+
+    const estimate = await deliveriesClient.createQuote(estimateRequest);
+
+    return estimate ;
+    
+  } catch (error) {
+    console.error('Error in the Uber estimate :', error);
+    const message = error.message;
+    await logErrorToFile(`Error in the Uber estimate : ${message} `, nombre);
+    console.error(message);
+    throw error;
+  }
+
+}
+
 
 async function logErrorToFile(errorMessage, nombre) {
 

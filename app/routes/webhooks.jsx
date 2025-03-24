@@ -1,11 +1,5 @@
 import { authenticate } from "../shopify.server";
 
-import {getUberToken} from '../functions/getDeliveryQuote'
-
-import {createDelivery} from '../functions/getDeliveryQuote'
-
-import {getOrigenPickup} from '../functions/getDeliveryQuote'
-
 import nodemailer from 'nodemailer';
 
 import prisma from '../db.server';
@@ -676,6 +670,89 @@ async function getVerificationData(id) {
       pickup_verification,
       dropoff_verification
   };
+}
+
+export async function getOrigenPickup(id, sucursales, destino) {
+
+  const destinoLatLog = {latitude: destino.latitude , longitude: destino.longitude} ;
+
+  return await sucursalMasCercana(id, sucursales, destinoLatLog);
+}
+
+export async function getUberToken(ajustes, nombre) {
+
+  const apiKey = ajustes ? ajustes.apiKey : null;
+
+  const secretKey = ajustes ? ajustes.secretKey : null;
+
+  const customer = ajustes ? ajustes.customer : null;
+
+  // Sobrescribe las variables de entorno programáticamente
+  process.env.UBER_DIRECT_CLIENT_ID = apiKey;
+  process.env.UBER_DIRECT_CLIENT_SECRET = secretKey;
+  process.env.UBER_DIRECT_CUSTOMER_ID = customer;
+
+  try {
+
+  const token = await getAccessToken();
+
+  return token ;
+
+  } catch (error) {
+    const message = error.message;
+    console.error(message);
+    const jsonPart = message.substring(message.indexOf('{'));
+    const errorObject = JSON.parse(jsonPart);
+    await logErrorToFile(`Error retrieving the token in Uber Direct: ${errorObject.error_description} `, nombre);
+    throw error;
+  }
+
+}
+
+export async function createDelivery(ajustes, token, nombre, deliveryRequest) {
+
+  const apiKey = ajustes ? ajustes.apiKey : null;
+  const secretKey = ajustes ? ajustes.secretKey : null;
+  const customer = ajustes ? ajustes.customer : null;
+
+  // Sobrescribe las variables de entorno programáticamente
+  process.env.UBER_DIRECT_CLIENT_ID = apiKey;
+  process.env.UBER_DIRECT_CLIENT_SECRET = secretKey;
+  process.env.UBER_DIRECT_CUSTOMER_ID = customer;
+
+  try {
+    const deliveriesClient = createDeliveriesClient(token);
+    const delivery = await deliveriesClient.createDelivery(deliveryRequest);
+    return delivery;
+  } catch (error) {
+    // Verificamos si el error tiene metadata
+
+    if (error.metadata) {
+      // Iteramos sobre las claves de metadata y extraemos el valor
+      let errorMessage = 'Error desconocido';
+
+      // Iteramos sobre cada clave en metadata y tomamos su valor
+      for (let key in error.metadata) {
+        if (error.metadata.hasOwnProperty(key)) {
+          errorMessage = error.metadata[key];
+          break; // Si quieres tomar solo el primer mensaje encontrado
+        }
+      }
+
+      // Mostrar el mensaje de error específico
+      console.error(`Error in the Uber delivery : ${errorMessage}`);
+      const message = error.message;
+
+      await logErrorToFile(`Error in the Uber delivery : ${message} - ${errorMessage}`, nombre);
+
+      console.error(message);
+      throw error; // Volver a lanzar el error después de loguearlo
+    } else {
+      // Si el error no tiene metadata, manejarlo como un error genérico
+      console.error('Error in the Uber delivery :', error.message);
+      throw error;
+    }
+  }
 }
 
 async function logErrorToFile(errorMessage, nombre) {
